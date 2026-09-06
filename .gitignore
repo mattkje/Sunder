@@ -6,6 +6,10 @@ xcuserdata/
 *.xcuserstate
 DerivedData/
 
+# Built app product (created via Xcode archive/export, not source) --
+# distributed as a Release DMG instead, see the repo's Releases page.
+/Sunder.app/
+
 # Converted CoreML models are large (500MB-1GB+) and distributed as GitHub
 # Release assets instead of committed to source control -- see
 # tools/convert/README.md and Sunder/Sunder/ModelDownloader.swift.
