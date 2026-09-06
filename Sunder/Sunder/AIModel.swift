@@ -3,7 +3,7 @@ import Foundation
 /// Everything about a model that varies between architectures/checkpoints:
 /// its STFT params, fixed inference chunk length (and the STFT frame count
 /// that length produces -- baked into the CoreML graph's input shape, see
-/// tools/convert/build_coreml.py), overlap-add stride, and stem count/names.
+/// tools/convert/build_coreml*.py), overlap-add stride, and stem count/names.
 nonisolated struct ModelSpec {
     let nFFT: Int
     let hopLength: Int
@@ -22,23 +22,33 @@ nonisolated struct ModelSpec {
 /// one is built) and downloaded on demand into Application Support --
 /// nothing is bundled in the app itself, so adding a model costs the app's
 /// download size nothing until someone actually picks it.
+///
+/// BS-Roformer HyperACE (unwa) is not included: its mask estimator embeds an
+/// extra CNN + custom "hypergraph attention" head well beyond the other
+/// models' plain per-band MLP, and hasn't been converted yet.
 nonisolated enum AIModel: String, CaseIterable, Identifiable {
     case melBandRoformerDeux
-    case bsRoformerHyperACE
+    case bsRoformerResurrectionInst
+    case melRoformerGaboxFv7
+    case melRoformerUnwaV1ePlus
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
         case .melBandRoformerDeux: return "Mel-Band RoFormer (Deux)"
-        case .bsRoformerHyperACE: return "BS-Roformer HyperACE"
+        case .bsRoformerResurrectionInst: return "BS-Roformer Resurrection"
+        case .melRoformerGaboxFv7: return "Mel-RoFormer Gabox Fv7"
+        case .melRoformerUnwaV1ePlus: return "Mel-RoFormer unwa v1e+"
         }
     }
 
     var detail: String {
         switch self {
         case .melBandRoformerDeux: return "Best all-round quality for both vocals and instrumental"
-        case .bsRoformerHyperACE: return "Less muddy instrumental (unwa)"
+        case .bsRoformerResurrectionInst: return "Fast, instrumental only (unwa)"
+        case .melRoformerGaboxFv7: return "Instrumental only, full-bodied mix (Gabox)"
+        case .melRoformerUnwaV1ePlus: return "Instrumental only (unwa)"
         }
     }
 
@@ -46,7 +56,9 @@ nonisolated enum AIModel: String, CaseIterable, Identifiable {
     var resourceName: String {
         switch self {
         case .melBandRoformerDeux: return "VocalsInstrumental"
-        case .bsRoformerHyperACE: return "BSRoformerHyperACE"
+        case .bsRoformerResurrectionInst: return "BSRoformerInstResurrection"
+        case .melRoformerGaboxFv7: return "MelRoformerGaboxFv7"
+        case .melRoformerUnwaV1ePlus: return "MelRoformerUnwaV1ePlus"
         }
     }
 
@@ -59,13 +71,20 @@ nonisolated enum AIModel: String, CaseIterable, Identifiable {
                 chunkSize: 573300, numOverlap: 2, timeFrames: 1301,
                 stemNames: ["Vocals", "Instrumental"]
             )
-        case .bsRoformerHyperACE:
-            // pcunwa/BS-Roformer-HyperACE config.yaml -- note its STFT hop
-            // (model.stft_hop_length) differs from Deux's, and it outputs a
-            // single stem (instrumental only, no separate vocals stem).
+        case .bsRoformerResurrectionInst:
+            // config_BandSplit-Roformer_Resurrection_Instrumental_by-Unwa.yaml --
+            // single stem (instrumental only).
             return ModelSpec(
-                nFFT: 2048, hopLength: 512, winLength: 2048,
-                chunkSize: 960000, numOverlap: 4, timeFrames: 1876,
+                nFFT: 2048, hopLength: 441, winLength: 2048,
+                chunkSize: 749259, numOverlap: 2, timeFrames: 1700,
+                stemNames: ["Instrumental"]
+            )
+        case .melRoformerGaboxFv7, .melRoformerUnwaV1ePlus:
+            // config_melband_roformer_inst_gabox.yaml / config_melband_roformer_inst.yaml --
+            // both share identical audio/inference params; both single stem.
+            return ModelSpec(
+                nFFT: 2048, hopLength: 441, winLength: 2048,
+                chunkSize: 485100, numOverlap: 2, timeFrames: 1101,
                 stemNames: ["Instrumental"]
             )
         }
@@ -81,7 +100,8 @@ nonisolated enum AIModel: String, CaseIterable, Identifiable {
     var approximateSizeMB: Int {
         switch self {
         case .melBandRoformerDeux: return 490
-        case .bsRoformerHyperACE: return 270
+        case .bsRoformerResurrectionInst: return 182
+        case .melRoformerGaboxFv7, .melRoformerUnwaV1ePlus: return 810
         }
     }
 

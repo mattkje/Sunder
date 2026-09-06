@@ -9,9 +9,10 @@ Input:  stft_repr (1, channels=2, freq=1025, time=T, 2) — real/imag STFT of
         the input chunk, computed outside this graph (Swift/vDSP mirrors it
         exactly for the app; verify.py mirrors it in Python for parity
         checking).
-Output: (num_stems=2, channels=2, freq=1025, time=T, 2) — masked spectrum per
-        stem (Vocals, Instrumental per becruily_deux config), ready for
-        ISTFT outside this graph.
+Output: (num_stems, channels=2, freq=1025, time=T, 2) — masked spectrum per
+        stem, ready for ISTFT outside this graph. num_stems is whatever the
+        loaded model has (e.g. 2 for becruily_deux's Vocals+Instrumental, 1
+        for a single-target instrumental-only checkpoint).
 
 Batch is fixed to 1: the app always processes one chunk of one file at a
 time, so the model's batched advanced-indexing (`stft_repr[batch_arange,
@@ -27,7 +28,7 @@ from einops import rearrange, pack, unpack, repeat
 class SpectrogramMasker(nn.Module):
     def __init__(self, model):
         super().__init__()
-        assert model.stereo and model.num_stems == 2, 'wrapper assumes the becruily_deux config'
+        assert model.stereo, 'wrapper assumes a stereo model (every Mel-Band-Roformer checkpoint used so far)'
         self.channels = model.audio_channels
         self.band_split = model.band_split
         self.layers = model.layers
