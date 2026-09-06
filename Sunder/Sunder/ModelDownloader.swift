@@ -54,6 +54,25 @@ final class ModelDownloader {
         tasks[model]?.cancel()
     }
 
+    /// Removes a downloaded model's cached files to reclaim disk space.
+    func delete(_ model: AIModel) {
+        try? FileManager.default.removeItem(at: Self.localModelURL(for: model))
+        states[model] = .notDownloaded
+    }
+
+    /// Disk space a downloaded model's cache actually occupies, if present.
+    func installedSizeMB(for model: AIModel) -> Int? {
+        let url = Self.localModelURL(for: model)
+        guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey]) else {
+            return nil
+        }
+        var total = 0
+        for case let fileURL as URL in enumerator {
+            total += (try? fileURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+        }
+        return total > 0 ? total / (1024 * 1024) : nil
+    }
+
     static func localModelURL(for model: AIModel) -> URL {
         modelsDirectory.appendingPathComponent("\(model.resourceName).mlmodelc")
     }
