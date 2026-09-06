@@ -1,0 +1,13 @@
+# macOS
+.DS_Store
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+
+# Converted CoreML models are large (500MB-1GB+) and distributed as GitHub
+# Release assets instead of committed to source control -- see
+# tools/convert/README.md and Sunder/Sunder/ModelDownloader.swift.
+*.mlpackage/
+*.mlmodelc/

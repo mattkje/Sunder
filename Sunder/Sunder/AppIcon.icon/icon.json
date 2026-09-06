@@ -1,0 +1,106 @@
+{
+  "fill" : {
+    "linear-gradient" : [
+      "srgb:1.00000,1.00000,1.00000,1.00000",
+      "srgb:0.76567,0.76567,0.76567,1.00000"
+    ],
+    "orientation" : {
+      "start" : {
+        "x" : 0.5,
+        "y" : 1
+      },
+      "stop" : {
+        "x" : 0.5,
+        "y" : 0
+      }
+    }
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "linear-gradient" : [
+                  "srgb:0.37056,0.37056,0.37056,1.00000",
+                  "srgb:0.00000,0.00000,0.00000,1.00000"
+                ]
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "linear-gradient" : [
+                  "srgb:0.75407,0.75409,0.75408,1.00000",
+                  "srgb:1.00000,1.00000,1.00000,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.5,
+                    "y" : 1
+                  },
+                  "stop" : {
+                    "x" : 0.5,
+                    "y" : 0
+                  }
+                }
+              }
+            }
+          ],
+          "image-name" : "mic.svg",
+          "name" : "mic",
+          "position" : {
+            "scale" : 1.15,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "fill" : {
+            "linear-gradient" : [
+              "srgb:1.00000,1.00000,1.00000,1.00000",
+              "srgb:1.00000,0.54098,0.84731,1.00000"
+            ],
+            "orientation" : {
+              "start" : {
+                "x" : 0.13219941143497752,
+                "y" : -0.09371997117232525
+              },
+              "stop" : {
+                "x" : 0.4086709838403042,
+                "y" : 0.9453393762447944
+              }
+            }
+          },
+          "hidden" : true,
+          "image-name" : "sparkle.png",
+          "name" : "sparkle",
+          "position" : {
+            "scale" : 2.63,
+            "translation-in-points" : [
+              -836.34,
+              715.36
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.55
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.15
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}
