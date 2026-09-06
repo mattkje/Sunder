@@ -6,7 +6,7 @@ final class AboutWindowController: NSWindowController {
 
     private init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 400, height: 460),
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 500),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -113,20 +113,24 @@ private struct AboutView: View {
 
                 Spacer()
 
-                // Model license footer
-                HStack(spacing: 4) {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 9))
-                    Text("Model: becruily/mel-band-roformer-deux")
-                    Text("·")
-                    Text("CC BY-NC 4.0")
+                // Model attribution footer
+                VStack(spacing: 3) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 9))
+                        Text("Models")
+                    }
+                    Text("Mel-Band RoFormer (Deux) — becruily · CC BY-NC 4.0")
+                    Text("BS-Roformer Resurrection — unwa")
+                    Text("Mel-RoFormer Fv7 — Gabox")
+                    Text("Mel-RoFormer v1e+ — unwa")
                 }
-                .font(.system(size: 10))
+                .font(.system(size: 9.5))
                 .foregroundColor(.secondary)
-                .padding(.bottom, 16)
+                .padding(.bottom, 14)
             }
         }
-        .frame(width: 400, height: 460)
+        .frame(width: 400, height: 500)
     }
 }
 
