@@ -4,10 +4,15 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @Environment(\.openSettings) private var openSettings
     @State private var engine = SeparationEngine()
+    @State private var downloader = ModelDownloader.shared
     @State private var inputURL: URL?
     @State private var isTargeted = false
     @AppStorage(OutputQuality.storageKey) private var qualityRaw = OutputQuality.web.rawValue
     @AppStorage(AIModel.storageKey) private var selectedModelRaw = AIModel.melBandRoformerDeux.rawValue
+
+    private var selectedModel: AIModel {
+        AIModel(rawValue: selectedModelRaw) ?? .melBandRoformerDeux
+    }
 
     var body: some View {
         VStack(spacing: 20) {
@@ -47,7 +52,7 @@ struct ContentView: View {
                     .foregroundStyle(.red)
             }
 
-            if let inputURL, isIdleOrFailed {
+            if let inputURL, isIdleOrFailed, downloader.state(for: selectedModel) == .ready {
                 Button("Separate \"\(inputURL.lastPathComponent)\"") {
                     separate(inputURL)
                 }
@@ -69,19 +74,53 @@ struct ContentView: View {
     }
 
     private var modelPicker: some View {
-        HStack(spacing: 6) {
-            Text("Model:")
-                .foregroundStyle(.secondary)
-            Picker("", selection: $selectedModelRaw) {
-                ForEach(AIModel.allCases) { model in
-                    Text(model.displayName).tag(model.rawValue)
+        VStack(spacing: 6) {
+            HStack(spacing: 6) {
+                Text("Model:")
+                    .foregroundStyle(.secondary)
+                Picker("", selection: $selectedModelRaw) {
+                    ForEach(AIModel.allCases) { model in
+                        Text(model.displayName).tag(model.rawValue)
+                    }
                 }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .fixedSize()
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .fixedSize()
+            .font(.callout)
+
+            modelStatusRow
         }
-        .font(.callout)
+    }
+
+    @ViewBuilder
+    private var modelStatusRow: some View {
+        switch downloader.state(for: selectedModel) {
+        case .ready:
+            EmptyView()
+        case .notDownloaded:
+            Button("Download Model (~\(selectedModel.approximateSizeMB) MB)") {
+                downloader.download(selectedModel)
+            }
+            .font(.caption)
+        case .downloading(let progress):
+            HStack(spacing: 8) {
+                ProgressView(value: progress).frame(width: 140)
+                Text("Downloading… \(Int(progress * 100))%")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Cancel") { downloader.cancelDownload(selectedModel) }
+                    .font(.caption)
+            }
+        case .failed(let message):
+            HStack(spacing: 8) {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                Button("Retry") { downloader.download(selectedModel) }
+                    .font(.caption)
+            }
+        }
     }
 
     private var isIdleOrFailed: Bool {
@@ -148,8 +187,7 @@ struct ContentView: View {
         panel.directoryURL = inputURL.deletingLastPathComponent()
         guard panel.runModal() == .OK, let outputDir = panel.url else { return }
         let quality = OutputQuality(rawValue: qualityRaw) ?? .web
-        let model = AIModel(rawValue: selectedModelRaw) ?? .melBandRoformerDeux
-        engine.run(inputURL: inputURL, outputDir: outputDir, quality: quality, model: model)
+        engine.run(inputURL: inputURL, outputDir: outputDir, quality: quality, model: selectedModel)
     }
 }
 

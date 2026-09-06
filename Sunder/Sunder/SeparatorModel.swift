@@ -1,14 +1,17 @@
 import CoreML
 import Foundation
 
-/// Thin wrapper around the bundled VocalsInstrumental CoreML model. Uses the
-/// generic MLModel/MLFeatureProvider API rather than an Xcode-codegenned
-/// class so it doesn't depend on how that codegen names things.
+/// Thin wrapper around a CoreML model downloaded into Application Support by
+/// ModelDownloader (see AIModel/ModelDownloader.swift -- nothing is bundled
+/// in the app itself). Uses the generic MLModel/MLFeatureProvider API rather
+/// than an Xcode-codegenned class so it doesn't depend on how that codegen
+/// names things.
 nonisolated final class SeparatorModel {
     private let model: MLModel
 
     init(model aiModel: AIModel = .melBandRoformerDeux) throws {
-        guard let url = Bundle.main.url(forResource: aiModel.resourceName, withExtension: "mlmodelc") else {
+        let url = ModelDownloader.localModelURL(for: aiModel)
+        guard FileManager.default.fileExists(atPath: url.path) else {
             throw SeparatorError.modelNotFound
         }
         let config = MLModelConfiguration()
@@ -80,7 +83,7 @@ enum SeparatorError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .modelNotFound: return "VocalsInstrumental.mlmodelc not found in app bundle."
+        case .modelNotFound: return "Model has not been downloaded yet."
         case .missingOutput: return "CoreML model did not return the expected output."
         }
     }
