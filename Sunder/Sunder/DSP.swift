@@ -1,9 +1,11 @@
 import Accelerate
 import Foundation
 
-/// STFT/ISTFT matching torch.stft/torch.istft exactly for the model's params
-/// (n_fft=2048, hop_length=441, win_length=2048, periodic Hann window,
-/// center=True, normalized=False). Verified numerically against torch
+/// STFT/ISTFT matching torch.stft/torch.istft exactly, for whatever
+/// (nFFT, hopLength) a given model's ModelSpec specifies -- periodic Hann
+/// window, center=True, normalized=False, winLength==nFFT (true of every
+/// model added so far; asserted in init since a shorter zero-padded window
+/// would need extra handling). Verified numerically against torch
 /// (max abs diff ~3e-5 forward, ~1.5e-7 round-trip) during development --
 /// see tools/convert for the reference generation used to check this.
 ///
@@ -21,27 +23,31 @@ nonisolated final class STFTProcessor {
     private let window: [Float]
     private let windowSq: [Float]
 
-    private let nFFT = ModelConfig.nFFT
-    private let hop = ModelConfig.hopLength
+    private let nFFT: Int
+    private let hop: Int
+    private let chunkSize: Int
     private let half: Int
     private let numFreq: Int
     private let pad: Int
     private let log2n: vDSP_Length
 
-    init() {
-        let n = ModelConfig.nFFT
-        half = n / 2
+    init(nFFT: Int, hopLength: Int, winLength: Int, chunkSize: Int) {
+        precondition(winLength == nFFT, "STFTProcessor assumes winLength == nFFT (true of every model added so far)")
+        self.nFFT = nFFT
+        self.hop = hopLength
+        self.chunkSize = chunkSize
+        half = nFFT / 2
         numFreq = half + 1
-        pad = n / 2
-        log2n = vDSP_Length(log2(Double(n)).rounded())
+        pad = nFFT / 2
+        log2n = vDSP_Length(log2(Double(nFFT)).rounded())
         guard let s = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2)) else {
             fatalError("Unable to create FFT setup")
         }
         setup = s
 
-        var w = [Float](repeating: 0, count: n)
-        for i in 0..<n {
-            w[i] = 0.5 - 0.5 * cos(2.0 * Float.pi * Float(i) / Float(n))
+        var w = [Float](repeating: 0, count: nFFT)
+        for i in 0..<nFFT {
+            w[i] = 0.5 - 0.5 * cos(2.0 * Float.pi * Float(i) / Float(nFFT))
         }
         window = w
         windowSq = w.map { $0 * $0 }
@@ -61,13 +67,12 @@ nonisolated final class STFTProcessor {
     }
 
     /// Returns (real, imag), each flattened [freq][time] row-major
-    /// (index = f * numFrames + t), for a signal of exactly
-    /// ModelConfig.chunkSize samples. numFrames == ModelConfig.timeFrames.
+    /// (index = f * numFrames + t), for a signal of exactly `chunkSize`
+    /// samples (as given at init).
     func forward(_ x: [Float]) -> (real: [Float], imag: [Float]) {
-        precondition(x.count == ModelConfig.chunkSize, "STFTProcessor.forward expects a full chunk")
+        precondition(x.count == chunkSize, "STFTProcessor.forward expects a full chunk")
         let padded = reflectPad(x, pad: pad)
         let T = (padded.count - nFFT) / hop + 1
-        precondition(T == ModelConfig.timeFrames)
 
         var real = [Float](repeating: 0, count: numFreq * T)
         var imag = [Float](repeating: 0, count: numFreq * T)
@@ -103,7 +108,7 @@ nonisolated final class STFTProcessor {
     }
 
     /// Inverse of `forward`: real/imag are flattened [freq][time]
-    /// (index = f * T + t), returns exactly ModelConfig.chunkSize samples.
+    /// (index = f * T + t), returns exactly `chunkSize` samples.
     func inverse(real: [Float], imag: [Float], T: Int) -> [Float] {
         let paddedLen = (T - 1) * hop + nFFT
         var overlapBuf = [Float](repeating: 0, count: paddedLen)
@@ -147,6 +152,6 @@ nonisolated final class STFTProcessor {
         for i in 0..<paddedLen {
             out[i] = overlapBuf[i] / max(winSumSq[i], eps)
         }
-        return Array(out[pad..<(pad + ModelConfig.chunkSize)])
+        return Array(out[pad..<(pad + chunkSize)])
     }
 }

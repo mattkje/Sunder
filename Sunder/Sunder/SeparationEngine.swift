@@ -67,7 +67,7 @@ final class SeparationEngine {
         let ext = quality.fileExtension
 
         var outputs: [URL] = []
-        for (i, name) in ModelConfig.stemNames.enumerated() {
+        for (i, name) in aiModel.spec.stemNames.enumerated() {
             let outURL = outputDir.appendingPathComponent("\(baseName)_\(name).\(ext)")
             try AudioIO.writeAudio(channels: stems[i], to: outURL, quality: quality)
             outputs.append(outURL)

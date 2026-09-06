@@ -6,17 +6,21 @@ import Foundation
 /// stride, run the model per chunk, overlap-add into a result+counter
 /// buffer, normalize, then crop the border back off.
 nonisolated final class Demixer {
-    private let stft = STFTProcessor()
+    private let stft: STFTProcessor
     private let model: SeparatorModel
+    private let spec: ModelSpec
 
-    private let chunkSize = ModelConfig.chunkSize
+    private let chunkSize: Int
     private let step: Int
     private let fadeSize: Int
     private let border: Int
 
     init(model: SeparatorModel) {
         self.model = model
-        step = chunkSize / ModelConfig.numOverlap
+        spec = model.spec
+        chunkSize = spec.chunkSize
+        stft = STFTProcessor(nFFT: spec.nFFT, hopLength: spec.hopLength, winLength: spec.winLength, chunkSize: spec.chunkSize)
+        step = chunkSize / spec.numOverlap
         fadeSize = chunkSize / 10
         border = chunkSize - step
     }
@@ -68,7 +72,7 @@ nonisolated final class Demixer {
         let paddedMix: [[Float]] = usesBorder ? mix.map { reflectPad($0, pad: border) } : mix
         let totalLen = paddedMix[0].count
 
-        var result = Array(repeating: Array(repeating: [Float](repeating: 0, count: totalLen), count: channels), count: ModelConfig.numStems)
+        var result = Array(repeating: Array(repeating: [Float](repeating: 0, count: totalLen), count: channels), count: spec.numStems)
         var counter = [Float](repeating: 0, count: totalLen)
         let window = windowingArray()
 
@@ -108,10 +112,10 @@ nonisolated final class Demixer {
             }
 
             let chunkStart = i - step // start index this iteration processed, before `i` advanced by `step`
-            for n in 0..<ModelConfig.numStems {
+            for n in 0..<spec.numStems {
                 for c in 0..<channels {
                     let (real, imag) = separated[n][c]
-                    let chunkAudio = stft.inverse(real: real, imag: imag, T: ModelConfig.timeFrames)
+                    let chunkAudio = stft.inverse(real: real, imag: imag, T: spec.timeFrames)
                     for n2 in 0..<segLen {
                         result[n][c][chunkStart + n2] += chunkAudio[n2] * win[n2]
                     }
@@ -125,8 +129,8 @@ nonisolated final class Demixer {
             progress(Double(stepIndex) / Double(totalSteps))
         }
 
-        var output = Array(repeating: Array(repeating: [Float](repeating: 0, count: lengthInit), count: channels), count: ModelConfig.numStems)
-        for n in 0..<ModelConfig.numStems {
+        var output = Array(repeating: Array(repeating: [Float](repeating: 0, count: lengthInit), count: channels), count: spec.numStems)
+        for n in 0..<spec.numStems {
             for c in 0..<channels {
                 var normalized = [Float](repeating: 0, count: totalLen)
                 for k in 0..<totalLen {

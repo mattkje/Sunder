@@ -8,12 +8,14 @@ import Foundation
 /// names things.
 nonisolated final class SeparatorModel {
     private let model: MLModel
+    let spec: ModelSpec
 
     init(model aiModel: AIModel = .melBandRoformerDeux) throws {
         let url = ModelDownloader.localModelURL(for: aiModel)
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw SeparatorError.modelNotFound
         }
+        spec = aiModel.spec
         let config = MLModelConfiguration()
         // matches compute_units used at conversion time (tools/convert/build_coreml.py) --
         // including the ANE target made this graph's gather/scatter-add ops painfully
@@ -23,12 +25,12 @@ nonisolated final class SeparatorModel {
     }
 
     /// stftRepr: real/imag STFT per channel, each flattened [freq][time]
-    /// (index = f * ModelConfig.timeFrames + t), for both channels.
+    /// (index = f * spec.timeFrames + t), for both channels.
     /// Returns, per stem, per channel, the masked (real, imag) spectrum in
     /// the same flattened layout, ready for STFTProcessor.inverse.
     func separate(channelReal: [[Float]], channelImag: [[Float]]) throws -> [[(real: [Float], imag: [Float])]] {
-        let F = ModelConfig.numFreqBins
-        let T = ModelConfig.timeFrames
+        let F = spec.numFreqBins
+        let T = spec.timeFrames
         let C = ModelConfig.channels
 
         let inputArray = try MLMultiArray(shape: [1, C, F, T, 2] as [NSNumber], dataType: .float32)
@@ -55,7 +57,7 @@ nonisolated final class SeparatorModel {
 
         var result: [[(real: [Float], imag: [Float])]] = []
         outArray.withUnsafeBufferPointer(ofType: Float.self) { buf in
-            for n in 0..<ModelConfig.numStems {
+            for n in 0..<spec.numStems {
                 var perChannel: [(real: [Float], imag: [Float])] = []
                 for c in 0..<C {
                     var real = [Float](repeating: 0, count: F * T)
