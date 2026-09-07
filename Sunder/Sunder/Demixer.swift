@@ -83,66 +83,79 @@ nonisolated final class Demixer {
         while i < totalLen {
             if isCancelled() { throw CancellationError() }
 
-            let end = min(i + chunkSize, totalLen)
-            let segLen = end - i
-            let useReflect = segLen > chunkSize / 2
+            // Each iteration round-trips through CoreML (MLMultiArray,
+            // MLFeatureProvider, model.prediction's own ObjC-bridged
+            // temporaries). This loop runs on a background Task with no
+            // RunLoop to ever turn over and drain the autorelease pool, so
+            // without this those temporaries all stay alive until the
+            // *whole* loop finishes instead of per chunk -- fine on macOS
+            // (no hard per-app ceiling) but on iOS a multi-minute track's
+            // worth of them blows past the jetsam memory limit and the app
+            // gets killed (EXC_RESOURCE / high watermark exceeded).
+            try autoreleasepool {
+                let end = min(i + chunkSize, totalLen)
+                let segLen = end - i
+                let useReflect = segLen > chunkSize / 2
 
-            var channelReal: [[Float]] = []
-            var channelImag: [[Float]] = []
-            for c in 0..<channels {
-                let rawPart = Array(paddedMix[c][i..<end])
-                let part = padChunk(rawPart, to: chunkSize, reflect: useReflect)
-                let (real, imag) = stft.forward(part)
-                channelReal.append(real)
-                channelImag.append(imag)
-            }
-
-            let separated = try model.separate(channelReal: channelReal, channelImag: channelImag)
-
-            let isFirst = (i == 0)
-            i += step
-            let isLast = i >= totalLen
-
-            var win = window
-            if isFirst {
-                for k in 0..<fadeSize { win[k] = 1 }
-            }
-            if isLast {
-                for k in 0..<fadeSize { win[chunkSize - fadeSize + k] = 1 }
-            }
-
-            let chunkStart = i - step // start index this iteration processed, before `i` advanced by `step`
-            for n in 0..<spec.numStems {
+                var channelReal: [[Float]] = []
+                var channelImag: [[Float]] = []
                 for c in 0..<channels {
-                    let (real, imag) = separated[n][c]
-                    let chunkAudio = stft.inverse(real: real, imag: imag, T: spec.timeFrames)
-                    for n2 in 0..<segLen {
-                        result[n][c][chunkStart + n2] += chunkAudio[n2] * win[n2]
+                    let rawPart = Array(paddedMix[c][i..<end])
+                    let part = padChunk(rawPart, to: chunkSize, reflect: useReflect)
+                    let (real, imag) = stft.forward(part)
+                    channelReal.append(real)
+                    channelImag.append(imag)
+                }
+
+                let separated = try model.separate(channelReal: channelReal, channelImag: channelImag)
+
+                let isFirst = (i == 0)
+                i += step
+                let isLast = i >= totalLen
+
+                var win = window
+                if isFirst {
+                    for k in 0..<fadeSize { win[k] = 1 }
+                }
+                if isLast {
+                    for k in 0..<fadeSize { win[chunkSize - fadeSize + k] = 1 }
+                }
+
+                let chunkStart = i - step // start index this iteration processed, before `i` advanced by `step`
+                for n in 0..<spec.numStems {
+                    for c in 0..<channels {
+                        let (real, imag) = separated[n][c]
+                        let chunkAudio = stft.inverse(real: real, imag: imag, T: spec.timeFrames)
+                        for n2 in 0..<segLen {
+                            result[n][c][chunkStart + n2] += chunkAudio[n2] * win[n2]
+                        }
                     }
                 }
-            }
-            for n2 in 0..<segLen {
-                counter[chunkStart + n2] += win[n2]
-            }
+                for n2 in 0..<segLen {
+                    counter[chunkStart + n2] += win[n2]
+                }
 
-            stepIndex += 1
-            progress(Double(stepIndex) / Double(totalSteps))
+                stepIndex += 1
+                progress(Double(stepIndex) / Double(totalSteps))
+            }
         }
 
-        var output = Array(repeating: Array(repeating: [Float](repeating: 0, count: lengthInit), count: channels), count: spec.numStems)
+        // Normalize in place and crop into `result` itself rather than
+        // allocating a second full-track-length copy -- for a multi-minute
+        // track at 2 stems x 2 channels that's another few hundred MB of
+        // peak memory that's easy to just not need.
         for n in 0..<spec.numStems {
             for c in 0..<channels {
-                var normalized = [Float](repeating: 0, count: totalLen)
                 for k in 0..<totalLen {
-                    normalized[k] = counter[k] > 0 ? result[n][c][k] / counter[k] : 0
+                    result[n][c][k] = counter[k] > 0 ? result[n][c][k] / counter[k] : 0
                 }
                 if usesBorder {
-                    output[n][c] = Array(normalized[border..<(border + lengthInit)])
-                } else {
-                    output[n][c] = Array(normalized[0..<lengthInit])
+                    result[n][c] = Array(result[n][c][border..<(border + lengthInit)])
+                } else if totalLen != lengthInit {
+                    result[n][c] = Array(result[n][c][0..<lengthInit])
                 }
             }
         }
-        return output
+        return result
     }
 }

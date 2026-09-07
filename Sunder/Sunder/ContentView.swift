@@ -1,12 +1,23 @@
 import SwiftUI
 import UniformTypeIdentifiers
+#if os(iOS)
+import UIKit
+#endif
 
 struct ContentView: View {
+    #if os(macOS)
     @Environment(\.openSettings) private var openSettings
+    #else
+    @State private var showSettings = false
+    #endif
     @State private var engine = SeparationEngine()
     @State private var downloader = ModelDownloader.shared
     @State private var inputURL: URL?
     @State private var isTargeted = false
+    @State private var showFileImporter = false
+    @State private var showURLImporter = false
+    @State private var pendingURLText = ""
+    @State private var urlImportError: String?
     @AppStorage(OutputQuality.storageKey) private var qualityRaw = OutputQuality.web.rawValue
     @AppStorage(AIModel.storageKey) private var selectedModelRaw = AIModel.melBandRoformerDeux.rawValue
 
@@ -15,6 +26,18 @@ struct ContentView: View {
     }
 
     var body: some View {
+        // .toolbar only has a bar to render into inside a NavigationStack on
+        // iOS (macOS window toolbars work without one) -- without this the
+        // gear button compiled fine but was never actually visible, so
+        // Settings/About were unreachable on iOS.
+        #if os(iOS)
+        NavigationStack { content }
+        #else
+        content
+        #endif
+    }
+
+    private var content: some View {
         VStack(spacing: 20) {
             Text("Separate vocals from instrumental")
                 .font(.title3)
@@ -34,16 +57,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
                 Button("Cancel") { engine.cancel() }
             case .done(let outputs):
-                VStack(alignment: .leading, spacing: 6) {
-                    Label("Done", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                    ForEach(outputs, id: \.self) { url in
-                        Text(url.lastPathComponent).font(.caption).foregroundStyle(.secondary)
-                    }
-                    Button("Show in Finder") {
-                        NSWorkspace.shared.activateFileViewerSelecting(outputs)
-                    }
-                }
+                doneRow(outputs)
             case .cancelled:
                 Label("Cancelled", systemImage: "xmark.circle")
                     .foregroundStyle(.secondary)
@@ -60,16 +74,52 @@ struct ContentView: View {
             }
         }
         .padding(32)
+        #if os(macOS)
         .frame(minWidth: 420, minHeight: 320)
+        #endif
         .toolbar {
             ToolbarItem(placement: .automatic) {
                 Button {
+                    #if os(macOS)
                     openSettings()
+                    #else
+                    showSettings = true
+                    #endif
                 } label: {
                     Image(systemName: "gearshape")
                 }
                 .help("Settings")
             }
+        }
+        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.audio]) { result in
+            if case .success(let url) = result {
+                inputURL = url
+                engine.state = .idle
+            }
+        }
+        .sheet(isPresented: $showURLImporter) { urlImportSheet }
+        #if os(iOS)
+        .sheet(isPresented: $showSettings) { SettingsView() }
+        #endif
+    }
+
+    @ViewBuilder
+    private func doneRow(_ outputs: [URL]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Done", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+            ForEach(outputs, id: \.self) { url in
+                Text(url.lastPathComponent).font(.caption).foregroundStyle(.secondary)
+            }
+            #if os(macOS)
+            Button("Show in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting(outputs)
+            }
+            #else
+            Button("Share / Save to Files") {
+                presentShareSheet(for: outputs)
+            }
+            #endif
         }
     }
 
@@ -130,6 +180,7 @@ struct ContentView: View {
         }
     }
 
+    @ViewBuilder
     private var dropZone: some View {
         RoundedRectangle(cornerRadius: 12)
             .strokeBorder(isTargeted ? Color.accentColor : Color.secondary.opacity(0.4), style: StrokeStyle(lineWidth: 2, dash: [6]))
@@ -140,14 +191,15 @@ struct ContentView: View {
                     Image(systemName: "waveform")
                         .font(.system(size: 28))
                         .foregroundStyle(.secondary)
-                    Text(inputURL?.lastPathComponent ?? "Drop an audio file here, or click to choose")
+                    Text(inputURL?.lastPathComponent ?? dropZonePrompt)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
                 }
             }
-            .onTapGesture { chooseFile() }
+            .onTapGesture { showFileImporter = true }
+            #if os(macOS)
             .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
                 guard let provider = providers.first else { return false }
                 _ = provider.loadObject(ofClass: URL.self) { url, _ in
@@ -160,23 +212,80 @@ struct ContentView: View {
                 }
                 return true
             }
+            #endif
+
+        Button("Paste a link…") { showURLImporter = true }
+            .font(.caption)
     }
 
-    private func chooseFile() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.audio]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        if panel.runModal() == .OK, let url = panel.url {
-            inputURL = url
-            engine.state = .idle
+    private var dropZonePrompt: String {
+        #if os(macOS)
+        "Drop an audio file here, or click to choose"
+        #else
+        "Tap to choose an audio file"
+        #endif
+    }
+
+    @ViewBuilder
+    private var urlImportSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Import from a link").font(.headline)
+            TextField("https://…/song.mp3", text: $pendingURLText)
+                #if os(iOS)
+                .textInputAutocapitalization(.never)
+                .keyboardType(.URL)
+                #endif
+                .autocorrectionDisabled()
+                .textFieldStyle(.roundedBorder)
+            if let urlImportError {
+                Text(urlImportError).font(.caption).foregroundStyle(.red)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel") { showURLImporter = false }
+                Button("Download") { importFromPastedURL() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(URL(string: pendingURLText)?.scheme.map { ["http", "https"].contains($0) } != true)
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 360)
+    }
+
+    private func importFromPastedURL() {
+        guard let url = URL(string: pendingURLText) else { return }
+        urlImportError = nil
+        Task {
+            do {
+                let localURL = try await RemoteAudioDownloader.download(url)
+                inputURL = localURL
+                engine.state = .idle
+                showURLImporter = false
+                pendingURLText = ""
+            } catch {
+                urlImportError = error.localizedDescription
+            }
         }
     }
 
-    /// The app is sandboxed with user-selected-file access only, which is
-    /// scoped to files/folders the user explicitly picks -- writing new
-    /// output files next to an arbitrary opened/dropped input isn't covered,
-    /// so ask where to save before running.
+    #if os(iOS)
+    private func presentShareSheet(for outputs: [URL]) {
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let root = scene.windows.first?.rootViewController else { return }
+        let activity = UIActivityViewController(activityItems: outputs, applicationActivities: nil)
+        // On iPad this presents as a popover, not a sheet, and crashes at
+        // runtime without a source rect to anchor it to -- iPhone ignores
+        // popoverPresentationController entirely, so this is harmless there.
+        if let popover = activity.popoverPresentationController {
+            popover.sourceView = root.view
+            popover.sourceRect = CGRect(x: root.view.bounds.midX, y: root.view.bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
+        root.present(activity, animated: true)
+    }
+    #endif
+
+    #if os(macOS)
     private func separate(_ inputURL: URL) {
         let panel = NSOpenPanel()
         panel.title = "Choose where to save the separated tracks"
@@ -189,6 +298,18 @@ struct ContentView: View {
         let quality = OutputQuality(rawValue: qualityRaw) ?? .web
         engine.run(inputURL: inputURL, outputDir: outputDir, quality: quality, model: selectedModel)
     }
+    #else
+    /// No "choose a save folder" step on iOS -- there's nothing analogous to
+    /// a Finder location to pick beforehand. Outputs go to a scratch
+    /// directory in the app's own container, then `doneRow` above offers a
+    /// share sheet (Save to Files, AirDrop, etc.) once separation finishes.
+    private func separate(_ inputURL: URL) {
+        let outputDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try? FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
+        let quality = OutputQuality(rawValue: qualityRaw) ?? .web
+        engine.run(inputURL: inputURL, outputDir: outputDir, quality: quality, model: selectedModel)
+    }
+    #endif
 }
 
 #Preview {

@@ -6,6 +6,7 @@ struct SunderApp: App {
         WindowGroup {
             ContentView()
         }
+        #if os(macOS)
         .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .appInfo) {
@@ -14,9 +15,12 @@ struct SunderApp: App {
                 }
             }
         }
+        #endif
 
+        #if os(macOS)
         Settings {
             SettingsView()
         }
+        #endif
     }
 }

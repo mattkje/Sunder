@@ -1,24 +1,28 @@
 """Trace SpectrogramMasker and convert it to a CoreML .mlpackage.
 
-T (STFT time-frame count) is fixed at 1301, matching config_deux_becruily's
-inference chunk_size=573300 samples at hop_length=441 -- the Swift app always
-pads chunks to exactly that length before STFT (see docs/demix reference),
-so a static shape is correct and safer to convert than a flexible one.
+T (STFT time-frame count) is a CLI arg, not fixed -- the architecture
+(RotaryEmbedding is relative, not fixed-length) supports any T; the Swift
+app just needs its ModelSpec.chunkSize/timeFrames to match whatever T this
+was converted at. Was hardcoded to 1301 (config_deux_becruily's
+chunk_size=573300 @ hop_length=441) until the mobile variant needed a
+second, shorter T from the same checkpoint -- generalized to match the
+build_coreml_mel.py / build_coreml_bs.py CLI-arg pattern.
+
+Usage: .venv/bin/python build_coreml.py <output.mlpackage> <T>
 """
 
+import sys
 import torch
 import coremltools as ct
 
 from load_model import load_model
 from wrapper import SpectrogramMasker
 
-OUT_PATH = 'VocalsInstrumental.mlpackage'
 FREQ = 1025
 CHANNELS = 2
-T = 1301
 
 
-def main():
+def main(out_path, T):
     model, cfg = load_model(flash_attn=False)
     wrapper = SpectrogramMasker(model).eval()
 
@@ -51,12 +55,14 @@ def main():
     mlmodel.author = 'converted from becruily/mel-band-roformer-deux'
     mlmodel.short_description = (
         'Mel-Band RoFormer (Vocals/Instrumental) STFT-domain masking network. '
-        'Input: (1,2,1025,1301,2) real/imag STFT of a 573300-sample @44.1kHz stereo chunk. '
-        'Output: (2,2,1025,1301,2) masked spectra, stem order [Vocals, Instrumental].'
+        f'Input: (1,2,1025,{T},2) real/imag STFT of one inference chunk '
+        '(see the paired AIModel.ModelSpec in the Swift app for its exact '
+        'chunk_size/hop_length). '
+        f'Output: (2,2,1025,{T},2) masked spectra, stem order [Vocals, Instrumental].'
     )
-    mlmodel.save(OUT_PATH)
-    print('saved', OUT_PATH)
+    mlmodel.save(out_path)
+    print('saved', out_path)
 
 
 if __name__ == '__main__':
-    main()
+    main(sys.argv[1], int(sys.argv[2]))

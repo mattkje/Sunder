@@ -1,9 +1,12 @@
+import CoreML
 import Foundation
 import Observation
+import ZIPFoundation
 
-/// Downloads a model's zipped .mlmodelc from its GitHub Release asset into
-/// Application Support, and reports per-model state so the UI can show
-/// download progress. One instance, shared app-wide (@Observable so
+/// Downloads a model's zipped .mlpackage from its GitHub Release asset into
+/// Application Support, compiles it into the .mlmodelc CoreML actually
+/// loads (see SeparatorModel), and reports per-model state so the UI can
+/// show download progress. One instance, shared app-wide (@Observable so
 /// ContentView's picker updates live as downloads progress).
 @Observable
 final class ModelDownloader {
@@ -83,8 +86,13 @@ final class ModelDownloader {
         return base.appendingPathComponent("Sunder/Models", isDirectory: true)
     }
 
-    /// Unzips the downloaded archive and moves the resulting .mlmodelc into
-    /// place, replacing any partial/previous copy.
+    /// Unzips the downloaded archive (ZIPFoundation -- pure Swift, works on
+    /// both platforms; unlike shelling out to /usr/bin/ditto, which iOS
+    /// doesn't have Process/subprocesses for at all), compiles the
+    /// extracted .mlpackage into a .mlmodelc for this device (a precompiled
+    /// .mlmodelc built on one OS/chip isn't guaranteed to load on another,
+    /// so every device compiles its own once, on first download), and moves
+    /// the result into place, replacing any partial/previous copy.
     private nonisolated static func install(zipURL: URL, model: AIModel) throws {
         try FileManager.default.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
 
@@ -92,35 +100,29 @@ final class ModelDownloader {
         try FileManager.default.createDirectory(at: extractDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: extractDir) }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        process.arguments = ["-x", "-k", zipURL.path, extractDir.path]
-        try process.run()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            throw ModelDownloaderError.unzipFailed
-        }
+        try FileManager.default.unzipItem(at: zipURL, to: extractDir)
 
-        let extractedModelc = extractDir.appendingPathComponent("\(model.resourceName).mlmodelc")
-        guard FileManager.default.fileExists(atPath: extractedModelc.path) else {
+        let extractedPackage = extractDir.appendingPathComponent("\(model.resourceName).mlpackage")
+        guard FileManager.default.fileExists(atPath: extractedPackage.path) else {
             throw ModelDownloaderError.unexpectedArchiveContents
         }
+
+        let compiledURL = try MLModel.compileModel(at: extractedPackage)
+        defer { try? FileManager.default.removeItem(at: compiledURL) }
 
         let destination = localModelURL(for: model)
         if FileManager.default.fileExists(atPath: destination.path) {
             try FileManager.default.removeItem(at: destination)
         }
-        try FileManager.default.moveItem(at: extractedModelc, to: destination)
+        try FileManager.default.moveItem(at: compiledURL, to: destination)
     }
 }
 
 enum ModelDownloaderError: LocalizedError {
-    case unzipFailed
     case unexpectedArchiveContents
 
     var errorDescription: String? {
         switch self {
-        case .unzipFailed: return "Could not unpack the downloaded model."
         case .unexpectedArchiveContents: return "Downloaded archive did not contain the expected model."
         }
     }
