@@ -1,7 +1,6 @@
 import CoreML
 import Foundation
 import Observation
-import ZIPFoundation
 
 /// Downloads a model's zipped .mlpackage from its GitHub Release asset into
 /// Application Support, compiles it into the .mlmodelc CoreML actually
@@ -86,8 +85,8 @@ final class ModelDownloader {
         return base.appendingPathComponent("Sunder/Models", isDirectory: true)
     }
 
-    /// Unzips the downloaded archive (ZIPFoundation -- pure Swift, works on
-    /// both platforms; unlike shelling out to /usr/bin/ditto, which iOS
+    /// Unzips the downloaded archive (ZipReader.swift -- pure Swift, works
+    /// on both platforms; unlike shelling out to /usr/bin/ditto, which iOS
     /// doesn't have Process/subprocesses for at all), compiles the
     /// extracted .mlpackage into a .mlmodelc for this device (a precompiled
     /// .mlmodelc built on one OS/chip isn't guaranteed to load on another,
@@ -100,7 +99,7 @@ final class ModelDownloader {
         try FileManager.default.createDirectory(at: extractDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: extractDir) }
 
-        try FileManager.default.unzipItem(at: zipURL, to: extractDir)
+        try ZipReader.unzipItem(at: zipURL, to: extractDir)
 
         let extractedPackage = extractDir.appendingPathComponent("\(model.resourceName).mlpackage")
         guard FileManager.default.fileExists(atPath: extractedPackage.path) else {
