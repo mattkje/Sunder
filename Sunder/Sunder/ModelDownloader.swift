@@ -76,11 +76,11 @@ final class ModelDownloader {
         return total > 0 ? total / (1024 * 1024) : nil
     }
 
-    static func localModelURL(for model: AIModel) -> URL {
+    nonisolated static func localModelURL(for model: AIModel) -> URL {
         modelsDirectory.appendingPathComponent("\(model.resourceName).mlmodelc")
     }
 
-    private static var modelsDirectory: URL {
+    private nonisolated static var modelsDirectory: URL {
         let base = (try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true))
             ?? FileManager.default.temporaryDirectory
         return base.appendingPathComponent("Sunder/Models", isDirectory: true)
