@@ -201,16 +201,24 @@ struct AboutView: View {
     /// Model license attribution -- CC BY-NC 4.0 on the Deux checkpoint
     /// requires this, so it stays on every platform's about page.
     private var modelAttribution: some View {
-        VStack(spacing: 3) {
-            HStack(spacing: 4) {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 9))
-                Text("Models")
+        VStack(spacing: 6) {
+            VStack(spacing: 3) {
+                HStack(spacing: 4) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 9))
+                    Text("Models")
+                }
+                Text("Mel-Band RoFormer (Deux) — becruily · CC BY-NC 4.0")
+                Text("BS-Roformer Resurrection — unwa")
+                Text("Mel-RoFormer Fv7 — Gabox")
+                Text("Mel-RoFormer v1e+ — unwa")
             }
-            Text("Mel-Band RoFormer (Deux) — becruily · CC BY-NC 4.0")
-            Text("BS-Roformer Resurrection — unwa")
-            Text("Mel-RoFormer Fv7 — Gabox")
-            Text("Mel-RoFormer v1e+ — unwa")
+            // Not legal advice -- just makes clear where responsibility for
+            // input audio sits, since this app can process any file a user
+            // gives it, including copyrighted commercial recordings.
+            Text("Only use Sunder on audio you own or have the rights to process. You're responsible for how you use its output.")
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
         }
         .font(.system(size: 9.5))
         .foregroundColor(.secondary)
