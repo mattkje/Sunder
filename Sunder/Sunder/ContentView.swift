@@ -75,7 +75,7 @@ struct ContentView: View {
         }
         .padding(32)
         #if os(macOS)
-        .frame(minWidth: 420, minHeight: 320)
+        .frame(minWidth: 340, minHeight: 380)
         #endif
         .toolbar {
             ToolbarItem(placement: .automatic) {
