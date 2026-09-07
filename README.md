@@ -1,16 +1,15 @@
 # Sunder
 
-A native macOS app that separates a song into vocals and instrumental,
-using the [becruily/mel-band-roformer-deux](https://huggingface.co/becruily/mel-band-roformer-deux)
-model (CC-BY-NC-4.0) converted to CoreML.
+A native macOS + iOS app that separates a song into vocals and/or
+instrumental, entirely on-device, using CoreML source-separation models
+(see **Models** below) converted from open research checkpoints.
 
-- `Sunder/` -- the Xcode app (SwiftUI). No Python or network dependency at
-  runtime: STFT/ISTFT run in Swift via Accelerate/vDSP, and the separation
-  network runs as a bundled CoreML model.
-- `tools/convert/` -- the one-time PyTorch -> CoreML conversion pipeline
-  that produces `Sunder/Sunder/VocalsInstrumental.mlpackage`. Not needed to
-  run the app, only to reproduce or update that model. See
-  `tools/convert/README.md`.
+- `Sunder/` -- the Xcode app (SwiftUI, one project/target for both
+  platforms). STFT/ISTFT run in Swift via Accelerate/vDSP; each separation
+  model is downloaded on demand (not bundled) and runs as a CoreML model.
+- `tools/convert/` -- the PyTorch -> CoreML conversion pipeline that
+  produces each model's `.mlpackage`. Not needed to run the app, only to
+  reproduce or add a model. See `tools/convert/README.md`.
 
 ## Running
 
@@ -23,7 +22,23 @@ kbps, the default -- small files) up to **Lossless** (16-bit WAV,
 uncompressed). Files are named `<name>_Vocals.m4a`/`<name>_Instrumental.m4a`
 (or `.wav` at Lossless).
 
-## License note
+## License
 
-The bundled model is derived from a checkpoint licensed CC-BY-NC-4.0
-(non-commercial). This app is for personal/non-commercial use accordingly.
+This repository's own code (the Sunder app, the conversion pipeline) is
+licensed under the [MIT License](LICENSE). That covers the code only -- the
+pre-trained model weights the app downloads at runtime are each a separate,
+independently copyrighted work under their own terms, not covered by the
+MIT license above:
+
+| Model | Author | License |
+|---|---|---|
+| Mel-Band RoFormer (Deux) | [becruily](https://huggingface.co/becruily/mel-band-roformer-deux) | CC BY-NC 4.0 (non-commercial) |
+| BS-Roformer Resurrection | [unwa](https://huggingface.co/pcunwa) | none published |
+| Mel-RoFormer Gabox Fv7 | [Gabox](https://huggingface.co/GaboxR67/MelBandRoformers) | none published |
+| Mel-RoFormer unwa v1e+ | [unwa](https://huggingface.co/pcunwa) | none published |
+
+"None published" means exactly that -- no license file or tag exists for
+that checkpoint anywhere it's hosted, which is a stricter, more ambiguous
+default than an explicit permissive license, not a green light. Treat all
+four the same way this app does: personal/non-commercial use, consistent
+with the one model that does state its terms.
