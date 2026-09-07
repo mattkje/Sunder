@@ -3,12 +3,32 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage(OutputQuality.storageKey) private var qualityRaw = OutputQuality.web.rawValue
     @State private var downloader = ModelDownloader.shared
+    #if os(iOS)
+    @Environment(\.dismiss) private var dismiss
+    @State private var showAbout = false
+    #endif
 
     private var quality: OutputQuality {
         OutputQuality(rawValue: qualityRaw) ?? .web
     }
 
     var body: some View {
+        #if os(iOS)
+        NavigationStack {
+            form
+                .navigationTitle("Settings")
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { dismiss() }
+                    }
+                }
+        }
+        #else
+        form
+        #endif
+    }
+
+    private var form: some View {
         Form {
             Section {
                 VStack(alignment: .leading, spacing: 10) {
@@ -46,9 +66,19 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            #if os(iOS)
+            Section {
+                Button("About Sunder") { showAbout = true }
+            }
+            #endif
         }
         .formStyle(.grouped)
+        #if os(macOS)
         .frame(width: 460, height: 420)
+        #else
+        .sheet(isPresented: $showAbout) { AboutView() }
+        #endif
     }
 
     @ViewBuilder

@@ -11,8 +11,12 @@ Two stages, both gated on a max-abs-diff threshold:
      gate for Part A before any Xcode work is trusted).
 
 Usage:
-  .venv/bin/python verify.py wrapper        # stage 1 only (no ckpt-load-of-coreml needed)
-  .venv/bin/python verify.py coreml <path>  # stage 2, against a saved .mlpackage
+  .venv/bin/python verify.py wrapper                  # stage 1 only (no ckpt-load-of-coreml needed)
+  .venv/bin/python verify.py coreml <path> [seconds]   # stage 2, against a saved .mlpackage;
+                                                        # seconds defaults to 13.0 (T=1301's chunk
+                                                        # length) -- pass the mobile variant's own
+                                                        # chunk length in seconds to verify it, e.g.
+                                                        # 6.5 for the T=651 mobile Deux package.
 """
 
 import sys
@@ -114,13 +118,13 @@ def run_wrapper_stage():
     print('PASS')
 
 
-def run_coreml_stage(path):
+def run_coreml_stage(path, seconds=13.0):
     import coremltools as ct
 
     model, cfg = load_model(flash_attn=False)
     wrapper = SpectrogramMasker(model).eval()
 
-    raw_audio = make_test_audio(model)
+    raw_audio = make_test_audio(model, seconds=seconds)
     stft_repr_real, _ = reference_stft_and_masked(model, raw_audio)
 
     with torch.no_grad():
@@ -144,6 +148,7 @@ if __name__ == '__main__':
         run_wrapper_stage()
     elif stage == 'coreml':
         path = sys.argv[2] if len(sys.argv) > 2 else 'VocalsInstrumental.mlpackage'
-        run_coreml_stage(path)
+        seconds = float(sys.argv[3]) if len(sys.argv) > 3 else 13.0
+        run_coreml_stage(path, seconds=seconds)
     else:
         raise SystemExit(f'unknown stage {stage!r}')

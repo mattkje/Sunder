@@ -3,7 +3,11 @@ Mel-Band-Roformer equivalent and the rationale). Parametrized by checkpoint
 directory. Usage:
 
   .venv/bin/python verify_bs.py wrapper <checkpoint_dir>
-  .venv/bin/python verify_bs.py coreml <checkpoint_dir> <mlpackage_path>
+  .venv/bin/python verify_bs.py coreml <checkpoint_dir> <mlpackage_path> [chunk_size]
+                                       # chunk_size defaults to the checkpoint's own
+                                       # cfg['audio']['chunk_size'] -- pass the mobile
+                                       # variant's chunk_size (samples) to verify that
+                                       # package instead.
 """
 
 import sys
@@ -82,13 +86,14 @@ def run_wrapper_stage(checkpoint_dir):
     print('PASS')
 
 
-def run_coreml_stage(checkpoint_dir, mlpackage_path):
+def run_coreml_stage(checkpoint_dir, mlpackage_path, chunk_size=None):
     import coremltools as ct
 
     model, cfg = load_model(checkpoint_dir, flash_attn=False)
     wrapper = SpectrogramMaskerBS(model).eval()
 
-    chunk_size = cfg['audio']['chunk_size']
+    if chunk_size is None:
+        chunk_size = cfg['audio']['chunk_size']
     raw_audio = make_test_audio(chunk_size)
     stft_repr_real = reference_stft(model, raw_audio)
 
@@ -111,6 +116,7 @@ if __name__ == '__main__':
     if stage == 'wrapper':
         run_wrapper_stage(checkpoint_dir)
     elif stage == 'coreml':
-        run_coreml_stage(checkpoint_dir, sys.argv[3])
+        chunk_size = int(sys.argv[4]) if len(sys.argv) > 4 else None
+        run_coreml_stage(checkpoint_dir, sys.argv[3], chunk_size=chunk_size)
     else:
         raise SystemExit(f'unknown stage {stage!r}')
