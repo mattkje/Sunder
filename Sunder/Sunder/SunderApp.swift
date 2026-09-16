@@ -16,11 +16,5 @@ struct SunderApp: App {
             }
         }
         #endif
-
-        #if os(macOS)
-        Settings {
-            SettingsView()
-        }
-        #endif
     }
 }

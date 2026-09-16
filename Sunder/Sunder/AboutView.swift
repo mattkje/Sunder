@@ -35,30 +35,6 @@ final class AboutWindowController: NSWindowController {
 }
 #endif
 
-/// Subtle background tones for the About gradient, resolved to each
-/// platform's own dynamic system color (there's no cross-platform name for
-/// "window background" / "control background").
-private enum PlatformColorToken {
-    case windowBackground
-    case controlBackground
-}
-
-private extension Color {
-    init(platformColor token: PlatformColorToken) {
-        #if os(macOS)
-        switch token {
-        case .windowBackground: self = Color(nsColor: .windowBackgroundColor)
-        case .controlBackground: self = Color(nsColor: .controlBackgroundColor)
-        }
-        #else
-        switch token {
-        case .windowBackground: self = Color(uiColor: .systemBackground)
-        case .controlBackground: self = Color(uiColor: .secondarySystemBackground)
-        }
-        #endif
-    }
-}
-
 /// The app icon, read from the asset catalog via each platform's own
 /// bundle-icon API (there's no cross-platform `Image(appIcon:)`).
 private var appIconImage: Image {
@@ -77,6 +53,7 @@ private var appIconImage: Image {
 
 struct AboutView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @State private var showCredits = false
 
     private let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
     private let build   = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
@@ -111,14 +88,8 @@ struct AboutView: View {
     #else
     private var macBody: some View {
         ZStack {
-            LinearGradient(
-                colors: colorScheme == .dark
-                    ? [Color(platformColor: .windowBackground), Color(platformColor: .controlBackground)]
-                    : [Color(platformColor: .controlBackground), Color(platformColor: .windowBackground)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
+            AppTheme.backgroundGradient(for: colorScheme)
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 header
@@ -198,21 +169,25 @@ struct AboutView: View {
         }
     }
 
-    /// Model license attribution -- CC BY-NC 4.0 on the Deux checkpoint
-    /// requires this, so it stays on every platform's about page.
+    /// Points at CreditsView for the full per-model attribution/license
+    /// list and legal-use notice -- kept short here so About stays a quick
+    /// glance, not a wall of small print.
     private var modelAttribution: some View {
-        VStack(spacing: 6) {
-            VStack(spacing: 3) {
+        VStack(spacing: 8) {
+            Button {
+                showCredits = true
+            } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "lock.fill")
                         .font(.system(size: 9))
-                    Text("Models")
+                    Text("Model Credits & Licenses")
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 8))
                 }
-                Text("Mel-Band RoFormer (Deux) — becruily · CC BY-NC 4.0")
-                Text("BS-Roformer Resurrection — unwa")
-                Text("Mel-RoFormer Fv7 — Gabox")
-                Text("Mel-RoFormer v1e+ — unwa")
             }
+            .buttonStyle(.plain)
+            .foregroundColor(.secondary)
+
             // Not legal advice -- just makes clear where responsibility for
             // input audio sits, since this app can process any file a user
             // gives it, including copyrighted commercial recordings.
@@ -223,6 +198,7 @@ struct AboutView: View {
         .font(.system(size: 9.5))
         .foregroundColor(.secondary)
         .padding(.bottom, 14)
+        .sheet(isPresented: $showCredits) { CreditsView() }
     }
 }
 

@@ -68,9 +68,17 @@ nonisolated enum AudioIO {
     static func writeAudio(channels: [[Float]], to url: URL, quality: OutputQuality) throws {
         let settings = quality.fileSettings(channels: channels.count)
         let file = try AVAudioFile(forWriting: url, settings: settings)
+        let buffer = try makeBuffer(channels: channels, format: file.processingFormat)
+        try file.write(from: buffer)
+    }
 
+    /// Fills an AVAudioPCMBuffer from deinterleaved Float32 channel arrays --
+    /// shared by `writeAudio` above (against the on-disk file's processing
+    /// format) and MixerPlayer (against a plain playback engine format), so
+    /// the buffer-filling loop exists exactly once.
+    static func makeBuffer(channels: [[Float]], format: AVAudioFormat) throws -> AVAudioPCMBuffer {
         let frameCount = channels[0].count
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(frameCount)) else {
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frameCount)) else {
             throw AudioIOError.bufferCreationFailed
         }
         buffer.frameLength = AVAudioFrameCount(frameCount)
@@ -82,7 +90,7 @@ nonisolated enum AudioIO {
                 channelData[c].update(from: src.baseAddress!, count: frameCount)
             }
         }
-        try file.write(from: buffer)
+        return buffer
     }
 }
 
