@@ -6,3 +6,6 @@ librosa==0.10.2.post1
 coremltools>=8.1
 pyyaml==6.0.2
 numpy<2
+transformers
+safetensors
+huggingface_hub

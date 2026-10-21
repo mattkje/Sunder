@@ -2,3 +2,9 @@
 checkpoint/
 checkpoints/
 __pycache__/
+build_voice/
+VoiceChanger-*.zip
+build_karaoke/
+.venv-voice/
+.sunder-models/
+.work/

@@ -56,6 +56,37 @@ final class ModelDownloader {
         tasks[model]?.cancel()
     }
 
+    /// Combined state of everything `model` runs (`AIModel.requiredModels`)
+    /// -- what a screen that separates with `model` needs, as opposed to
+    /// `state(for:)`'s single checkpoint (Settings' per-checkpoint list).
+    func readiness(for model: AIModel) -> State {
+        let required = model.requiredModels.map(state(for:))
+        if required.allSatisfy({ $0 == .ready }) { return .ready }
+        for case let .failed(message) in required { return .failed(message) }
+        let progress = required.map { state -> Double? in
+            switch state {
+            case .ready: return 1
+            case .downloading(let progress): return progress
+            default: return nil
+            }
+        }
+        guard required.contains(where: { if case .downloading = $0 { return true }; return false }) else { return .notDownloaded }
+        return .downloading(progress: progress.map { $0 ?? 0 }.reduce(0, +) / Double(required.count))
+    }
+
+    func downloadRequirements(of model: AIModel) {
+        model.requiredModels.forEach(download)
+    }
+
+    func cancelRequirements(of model: AIModel) {
+        model.requiredModels.forEach(cancelDownload)
+    }
+
+    /// Approximate size of whatever `model` still needs downloaded.
+    func pendingDownloadMB(for model: AIModel) -> Int {
+        model.requiredModels.filter { state(for: $0) != .ready }.map(\.approximateSizeMB).reduce(0, +)
+    }
+
     /// Removes a downloaded model's cached files to reclaim disk space.
     func delete(_ model: AIModel) {
         try? FileManager.default.removeItem(at: Self.localModelURL(for: model))
@@ -79,7 +110,7 @@ final class ModelDownloader {
         modelsDirectory.appendingPathComponent("\(model.resourceName).mlmodelc")
     }
 
-    private nonisolated static var modelsDirectory: URL {
+    nonisolated static var modelsDirectory: URL {
         let base = (try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true))
             ?? FileManager.default.temporaryDirectory
         return base.appendingPathComponent("Sunder/Models", isDirectory: true)
@@ -127,10 +158,11 @@ enum ModelDownloaderError: LocalizedError {
     }
 }
 
-/// Thin URLSessionDownloadDelegate wrapper: downloads to a temp file while
-/// reporting progress, retaining itself (and its session) for the duration
-/// via GitHubAssetDownloader.active so nothing is deallocated mid-transfer.
-private final class GitHubAssetDownloader: NSObject, URLSessionDownloadDelegate {
+/// Thin URLSessionDownloadDelegate wrapper (shared with VoiceAssetDownloader):
+/// downloads to a temp file while reporting progress, retaining itself (and
+/// its session) for the duration via GitHubAssetDownloader.active so nothing
+/// is deallocated mid-transfer.
+final class GitHubAssetDownloader: NSObject, URLSessionDownloadDelegate {
     private let progress: (Double) -> Void
     private let continuation: CheckedContinuation<URL, Error>
     private var session: URLSession!

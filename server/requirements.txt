@@ -1,0 +1,17 @@
+# torch and audio-separator[cpu|gpu] are installed separately (see Dockerfile / README).
+transformers
+safetensors
+huggingface_hub
+librosa>=0.10,<1  # 1.0 drops the audioread/ffmpeg fallback (m4a) that audio-separator also imports
+audioread
+soundfile
+scipy
+numpy
+fastapi
+uvicorn
+python-multipart
+# Seed-VC (tools/convert/models/seedvc)
+coremltools>=8.1
+munch
+einops
+pyyaml

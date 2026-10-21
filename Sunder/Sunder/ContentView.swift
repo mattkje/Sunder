@@ -8,6 +8,11 @@ import SwiftUI
 /// it's app configuration rather than a workflow.
 private enum SidebarDestination: Hashable {
     case section(AppSection)
+    case mixer
+    case spatialize
+    #if os(macOS)
+    case voice
+    #endif
     case settings
 }
 
@@ -18,9 +23,19 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(AppSection.allCases, selection: $selection) { section in
-                Label(section.displayName, systemImage: section.icon)
-                    .tag(SidebarDestination.section(section))
+            List(selection: $selection) {
+                ForEach(AppSection.allCases) { section in
+                    Label(section.displayName, systemImage: section.icon)
+                        .tag(SidebarDestination.section(section))
+                }
+                Label("Mixer", systemImage: "slider.horizontal.3")
+                    .tag(SidebarDestination.mixer)
+                Label("Spatialize", systemImage: "move.3d")
+                    .tag(SidebarDestination.spatialize)
+                #if os(macOS)
+                Label("Voice Changer", systemImage: "waveform.and.person.filled")
+                    .tag(SidebarDestination.voice)
+                #endif
             }
             .navigationTitle("Sunder")
             .disabled(queue.isRunning)
@@ -38,9 +53,18 @@ struct ContentView: View {
                 .disabled(queue.isRunning)
             }
         } detail: {
-            if selection == .settings {
+            switch selection {
+            case .settings:
                 SettingsView()
-            } else {
+            case .mixer:
+                MixerScreen()
+            case .spatialize:
+                SpatializeScreen()
+            #if os(macOS)
+            case .voice:
+                VoiceScreen()
+            #endif
+            default:
                 SeparationScreen(section: currentSection)
                     .id(selection)
             }

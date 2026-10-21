@@ -1,3 +1,4 @@
+import Accelerate
 import AVFoundation
 import Foundation
 
@@ -70,6 +71,41 @@ nonisolated enum AudioIO {
         let file = try AVAudioFile(forWriting: url, settings: settings)
         let buffer = try makeBuffer(channels: channels, format: file.processingFormat)
         try file.write(from: buffer)
+    }
+
+    /// Zero-pads or truncates every channel to exactly `frameCount` --
+    /// stems from this app's own separation always already match each other
+    /// (same source audio), but a file imported into the Mixer, or a stem
+    /// just time-stretched by the Align tool, generally won't. Shared by
+    /// MixerScreen's import/add-stem paths and MixerView's align-apply so
+    /// this "make every stem the same length" rule exists exactly once.
+    static func fit(channels: [[Float]], toFrameCount frameCount: Int) -> [[Float]] {
+        channels.map { channel in
+            if channel.count == frameCount {
+                return channel
+            } else if channel.count < frameCount {
+                return channel + [Float](repeating: 0, count: frameCount - channel.count)
+            } else {
+                return Array(channel.prefix(frameCount))
+            }
+        }
+    }
+
+    /// Averages every channel down to one -- BeatDetector needs mono for its
+    /// onset analysis, and SpatialAudioPlayer needs mono per-stem sources
+    /// since AVAudioEnvironmentNode point sources must be mono (a stereo
+    /// signal has no single position to place). Shared here rather than
+    /// duplicated so this rule exists exactly once.
+    static func mixToMono(_ channels: [[Float]]) -> [Float] {
+        guard let first = channels.first, !first.isEmpty else { return [] }
+        guard channels.count > 1 else { return first }
+        var mono = [Float](repeating: 0, count: first.count)
+        for channel in channels {
+            for i in 0..<min(channel.count, mono.count) { mono[i] += channel[i] }
+        }
+        var scale = Float(1) / Float(channels.count)
+        vDSP_vsmul(mono, 1, &scale, &mono, 1, vDSP_Length(mono.count))
+        return mono
     }
 
     /// Fills an AVAudioPCMBuffer from deinterleaved Float32 channel arrays --

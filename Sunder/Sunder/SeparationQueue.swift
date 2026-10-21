@@ -20,12 +20,30 @@ final class SeparationQueue {
         let model: AIModel
     }
 
-    /// Everything a finished separation produced, held in memory until the
-    /// Mixer's Close/save actions decide what (if anything) gets written to
-    /// disk -- see MixerView/MixerPlayer.
+    /// Where an unattended batch writes its stems. When a batch has one of
+    /// these, finished files are written straight to disk (one subfolder per
+    /// input file) and the queue moves on immediately, instead of stopping
+    /// at the Mixer sheet after every file -- so a long multi-file batch can
+    /// run without anyone at the keyboard.
+    nonisolated struct AutoSave {
+        let folder: URL
+        let quality: OutputQuality
+    }
+
+    /// Everything a finished separation (or a direct file import -- see
+    /// MixerScreen) produced, held in memory until the Mixer's Close/save
+    /// actions decide what (if anything) gets written to disk -- see
+    /// MixerView/MixerPlayer. `stemNames` is carried directly rather than as
+    /// an `AIModel` reference so an imported session (no model involved) can
+    /// build one the same way a separation does.
     struct MixSession {
+        /// Distinct per construction -- lets MixerScreen force a fresh
+        /// MixerView/MixerPlayer (`.id(session.id)`) whenever the stems
+        /// themselves change (Add Stem, Align apply), since MixerPlayer
+        /// builds its node graph once from an immutable `stems` array.
+        let id = UUID()
         let inputURL: URL
-        let model: AIModel
+        let stemNames: [String]
         let stems: [[[Float]]] // [stemIndex][channel][sample]
     }
 
@@ -35,6 +53,10 @@ final class SeparationQueue {
         case done(session: MixSession)
         case cancelled
         case failed(inputURL: URL, message: String)
+        /// An auto-saved batch ran to the end. `failures` lists the input
+        /// files (by name) that couldn't be separated or written -- an
+        /// unattended batch skips those rather than stopping.
+        case batchSaved(folder: URL, savedCount: Int, failures: [String])
 
         static func == (lhs: Status, rhs: Status) -> Bool {
             switch (lhs, rhs) {
@@ -43,14 +65,23 @@ final class SeparationQueue {
                 return u1 == u2 && i1 == i2 && t1 == t2 && p1 == p2
             case let (.done(s1), .done(s2)): return s1.inputURL == s2.inputURL
             case let (.failed(u1, m1), .failed(u2, m2)): return u1 == u2 && m1 == m2
+            case let (.batchSaved(f1, c1, x1), .batchSaved(f2, c2, x2)): return f1 == f2 && c1 == c2 && x1 == x2
             default: return false
             }
         }
     }
 
     private(set) var status: Status = .idle
+    /// The most recent finished session, kept around after `status` moves on
+    /// to `.idle`/the next queued file -- backs the persistent "Mixer"
+    /// sidebar tab (MixerScreen), which needs something to show even once
+    /// the post-separation sheet (driven by `status == .done`) is long gone.
+    private(set) var lastSession: MixSession?
     private var pending: [Job] = []
     private var totalInBatch = 0
+    private var autoSave: AutoSave?
+    private var savedCount = 0
+    private var failures: [String] = []
     private var currentTask: Task<Void, Never>?
 
     var isRunning: Bool {
@@ -61,11 +92,16 @@ final class SeparationQueue {
     /// Starts a new batch immediately. No-op while already running --
     /// callers keep file selection disabled during a run (see
     /// SeparationScreen/ContentView's `.disabled(isRunning)`), so this
-    /// should never actually be hit mid-batch.
-    func enqueue(_ jobs: [Job]) {
+    /// should never actually be hit mid-batch. With `autoSave`, every file's
+    /// stems are written to that folder and the batch never pauses for the
+    /// Mixer; without it, each finished file opens the Mixer as before.
+    func enqueue(_ jobs: [Job], autoSave: AutoSave? = nil) {
         guard !jobs.isEmpty, !isRunning else { return }
         pending = jobs
         totalInBatch = jobs.count
+        self.autoSave = autoSave
+        savedCount = 0
+        failures = []
         runNext()
     }
 
@@ -95,13 +131,19 @@ final class SeparationQueue {
 
     private func runNext() {
         guard !pending.isEmpty else {
-            status = .idle
+            if let autoSave {
+                status = .batchSaved(folder: autoSave.folder, savedCount: savedCount, failures: failures)
+                self.autoSave = nil
+            } else {
+                status = .idle
+            }
             return
         }
         let job = pending.removeFirst()
         let index = totalInBatch - pending.count // 1-based position of `job` in the batch
         status = .separating(inputURL: job.inputURL, indexInBatch: index, totalInBatch: totalInBatch, progress: 0)
 
+        let autoSave = autoSave
         currentTask = Task.detached(priority: .userInitiated) { [self] in
             do {
                 let session = try Self.process(
@@ -113,15 +155,34 @@ final class SeparationQueue {
                         }
                     }
                 }
-                await MainActor.run {
-                    status = .done(session: session)
+                if let autoSave {
+                    try Self.write(session, to: autoSave)
+                    await MainActor.run {
+                        lastSession = session
+                        savedCount += 1
+                        runNext()
+                    }
+                } else {
+                    await MainActor.run {
+                        status = .done(session: session)
+                        lastSession = session
+                    }
                 }
             } catch is CancellationError {
-                await MainActor.run { status = .cancelled }
+                await MainActor.run {
+                    self.autoSave = nil
+                    status = .cancelled
+                }
             } catch {
                 await MainActor.run {
-                    pending.removeAll()
-                    status = .failed(inputURL: job.inputURL, message: error.localizedDescription)
+                    if autoSave != nil {
+                        // Unattended: note it and keep going with the rest.
+                        failures.append(job.inputURL.lastPathComponent)
+                        runNext()
+                    } else {
+                        pending.removeAll()
+                        status = .failed(inputURL: job.inputURL, message: error.localizedDescription)
+                    }
                 }
             }
         }
@@ -146,10 +207,39 @@ final class SeparationQueue {
         }
 
         let mix = try AudioIO.loadAudio(url: inputURL)
-        let model = try SeparatorModel(model: aiModel)
-        let demixer = Demixer(model: model)
-        let stems = try demixer.separate(mix: mix, isCancelled: { Task.isCancelled }, progress: progress)
+        guard let chain = aiModel.chainedSplit else {
+            let stems = try separate(mix, with: aiModel, progress: progress)
+            return MixSession(inputURL: inputURL, stemNames: aiModel.outputStemNames, stems: stems)
+        }
+        // Two passes, one model loaded at a time; each gets half the bar.
+        var stems = try separate(mix, with: aiModel) { progress($0 / 2) }
+        let split = try separate(stems[chain.stemIndex], with: chain.model) { progress(0.5 + $0 / 2) }
+        stems.replaceSubrange(chain.stemIndex ... chain.stemIndex, with: split)
+        return MixSession(inputURL: inputURL, stemNames: aiModel.outputStemNames, stems: stems)
+    }
 
-        return MixSession(inputURL: inputURL, model: aiModel, stems: stems)
+    private nonisolated static func separate(
+        _ audio: [[Float]], with aiModel: AIModel, progress: (Double) -> Void
+    ) throws -> [[[Float]]] {
+        let demixer = Demixer(model: try SeparatorModel(model: aiModel))
+        return try demixer.separate(mix: audio, isCancelled: { Task.isCancelled }, progress: progress)
+    }
+
+    /// Writes every stem of `session` into `<folder>/<input name>/`, named
+    /// the same way MixerView's "Save All Separately" names them.
+    private nonisolated static func write(_ session: MixSession, to autoSave: AutoSave) throws {
+        let folderAccess = autoSave.folder.startAccessingSecurityScopedResource()
+        defer {
+            if folderAccess { autoSave.folder.stopAccessingSecurityScopedResource() }
+        }
+
+        let baseName = session.inputURL.deletingPathExtension().lastPathComponent
+        let dir = autoSave.folder.appendingPathComponent(baseName, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        for (i, name) in session.stemNames.enumerated() {
+            let url = dir.appendingPathComponent("\(baseName)_\(name).\(autoSave.quality.fileExtension)")
+            try? FileManager.default.removeItem(at: url)
+            try AudioIO.writeAudio(channels: session.stems[i], to: url, quality: autoSave.quality)
+        }
     }
 }

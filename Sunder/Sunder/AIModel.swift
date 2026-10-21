@@ -43,6 +43,7 @@ nonisolated enum AIModel: String, CaseIterable, Identifiable {
     case melRoformerUnwaV1ePlus
     case bsRoformer4Stems
     case bsRoformer6StemsSW
+    case melRoformerKaraokeBecruily
     // Enhance (restoration) is macOS-only: Apollo's per-chunk memory/compute
     // cost wasn't validated against iOS's tight jetsam ceiling the way the
     // separation models were (see resourceName's Deux comment), and no
@@ -58,7 +59,7 @@ nonisolated enum AIModel: String, CaseIterable, Identifiable {
     var task: ModelTask {
         switch self {
         case .melBandRoformerDeux, .bsRoformerResurrectionInst, .melRoformerGaboxFv7,
-             .melRoformerUnwaV1ePlus, .bsRoformer4Stems, .bsRoformer6StemsSW:
+             .melRoformerUnwaV1ePlus, .bsRoformer4Stems, .bsRoformer6StemsSW, .melRoformerKaraokeBecruily:
             return .separation
         #if os(macOS)
         case .apolloUniversal, .apolloVocalEnhancerV2:
@@ -75,6 +76,7 @@ nonisolated enum AIModel: String, CaseIterable, Identifiable {
         case .melRoformerUnwaV1ePlus: return "Mel-RoFormer unwa v1e+"
         case .bsRoformer4Stems: return "BS-RoFormer 4-Stem (ZFTurbo)"
         case .bsRoformer6StemsSW: return "BS-RoFormer 6-Stem SW (jarredou)"
+        case .melRoformerKaraokeBecruily: return "Mel-RoFormer Karaoke (becruily)"
         #if os(macOS)
         case .apolloUniversal: return "Apollo Universal (Lew)"
         case .apolloVocalEnhancerV2: return "Vocal Enhancer v2 Beta (Lew)"
@@ -90,6 +92,7 @@ nonisolated enum AIModel: String, CaseIterable, Identifiable {
         case .melRoformerUnwaV1ePlus: return "Instrumental only (unwa)"
         case .bsRoformer4Stems: return "Splits into vocals, drums, bass, and other (ZFTurbo)"
         case .bsRoformer6StemsSW: return "Splits into vocals, drums, bass, guitar, piano, and other (jarredou)"
+        case .melRoformerKaraokeBecruily: return "Splits into lead vocals, backing vocals, and instrumental (becruily + Deux)"
         #if os(macOS)
         case .apolloUniversal: return "General restoration and upscaling for any music (Lew)"
         case .apolloVocalEnhancerV2: return "Restores and enhances vocal quality -- v2 beta (Lew)"
@@ -112,6 +115,7 @@ nonisolated enum AIModel: String, CaseIterable, Identifiable {
         case .melRoformerUnwaV1ePlus: return ("unwa", nil)
         case .bsRoformer4Stems: return ("ZFTurbo", "MIT")
         case .bsRoformer6StemsSW: return ("jarredou", nil)
+        case .melRoformerKaraokeBecruily: return ("becruily", nil)
         #if os(macOS)
         case .apolloUniversal, .apolloVocalEnhancerV2: return ("Lew", nil)
         #endif
@@ -128,6 +132,7 @@ nonisolated enum AIModel: String, CaseIterable, Identifiable {
         case .melRoformerUnwaV1ePlus: return "waveform.badge.magnifyingglass"
         case .bsRoformer4Stems: return "rectangle.split.2x2"
         case .bsRoformer6StemsSW: return "square.grid.3x2"
+        case .melRoformerKaraokeBecruily: return "music.mic"
         #if os(macOS)
         case .apolloUniversal: return "sparkles"
         case .apolloVocalEnhancerV2: return "person.wave.2.fill"
@@ -180,6 +185,12 @@ nonisolated enum AIModel: String, CaseIterable, Identifiable {
             return "BSRoformer6StemsSWMobile"
             #else
             return "BSRoformer6StemsSW"
+            #endif
+        case .melRoformerKaraokeBecruily:
+            #if os(iOS)
+            return "MelRoformerKaraokeBecruilyMobile"
+            #else
+            return "MelRoformerKaraokeBecruily"
             #endif
         #if os(macOS)
         case .apolloUniversal:
@@ -290,6 +301,26 @@ nonisolated enum AIModel: String, CaseIterable, Identifiable {
                 stemNames: ["Bass", "Drums", "Other", "Vocals", "Guitar", "Piano"]
             )
             #endif
+        case .melRoformerKaraokeBecruily:
+            // config_karaoke_becruily.yaml -- same architecture and audio params
+            // as the Gabox/unwa Mel-RoFormers above, but 2 stems: its "Vocals"
+            // is the lead vocal only, its "Instrumental" is everything else
+            // including backing vocals. The config asks for num_overlap 8;
+            // 2 matches every other model here and is ~4x faster. iOS uses a
+            // shorter-chunk variant, same reasoning as Deux above.
+            #if os(iOS)
+            return ModelSpec(
+                nFFT: 2048, hopLength: 441, winLength: 2048,
+                chunkSize: 242550, numOverlap: 2, timeFrames: 551,
+                stemNames: ["Lead Vocals", "Backing + Instrumental"]
+            )
+            #else
+            return ModelSpec(
+                nFFT: 2048, hopLength: 441, winLength: 2048,
+                chunkSize: 485100, numOverlap: 2, timeFrames: 1101,
+                stemNames: ["Lead Vocals", "Backing + Instrumental"]
+            )
+            #endif
         #if os(macOS)
         case .apolloUniversal:
             // Apollo's window is 20ms @ 44.1kHz: nFFT = 44100*20/1000 = 882
@@ -325,6 +356,25 @@ nonisolated enum AIModel: String, CaseIterable, Identifiable {
         }
     }
 
+    /// A second model run on one of this model's stems to split it further.
+    /// The karaoke model leaves the backing vocals inside its instrumental
+    /// stem, so Deux then splits that stem into backing vocals and the bare
+    /// instrumental -- giving Lead / Backing / Instrumental.
+    var chainedSplit: (stemIndex: Int, model: AIModel)? {
+        self == .melRoformerKaraokeBecruily ? (1, .melBandRoformerDeux) : nil
+    }
+
+    /// Every downloadable checkpoint a separation with this model runs.
+    var requiredModels: [AIModel] {
+        [self] + (chainedSplit.map { [$0.model] } ?? [])
+    }
+
+    /// The stems a separation with this model hands to the Mixer -- `spec`'s
+    /// own stems, except where `chainedSplit` replaces one with two.
+    var outputStemNames: [String] {
+        self == .melRoformerKaraokeBecruily ? ["Lead Vocals", "Backing Vocals", "Instrumental"] : spec.stemNames
+    }
+
     /// Download URL for the zipped .mlpackage (compiled to .mlmodelc
     /// on-device by ModelDownloader.install -- see its doc comment for why).
     var downloadURL: URL {
@@ -340,6 +390,7 @@ nonisolated enum AIModel: String, CaseIterable, Identifiable {
         case .melRoformerGaboxFv7, .melRoformerUnwaV1ePlus: return 810
         case .bsRoformer4Stems: return 504
         case .bsRoformer6StemsSW: return 403
+        case .melRoformerKaraokeBecruily: return 1520
         #if os(macOS)
         case .apolloUniversal: return 140
         case .apolloVocalEnhancerV2: return 36

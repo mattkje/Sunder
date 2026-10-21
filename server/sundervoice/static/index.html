@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sunder Server</title>
+<link rel="icon" href="/logo.png">
+<style>/
+  :root {
+    --bg: #f2f2f4; --bg2: #e9e9ee; --card: #ffffff; --raised: #f7f7f9;
+    --text: #111113; --muted: #6e6e76; --faint: #a1a1aa; --line: rgba(0,0,0,.08);
+    --ink: #111113; --on-ink: #ffffff;
+    --ok: #1f8a3b; --danger: #d4261c; --warn: #b26a00;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 6px 24px rgba(0,0,0,.06);
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0b0b0d; --bg2: #131316; --card: #18181b; --raised: #202024;
+            --text: #f4f4f5; --muted: #a1a1aa; --faint: #6b6b73; --line: rgba(255,255,255,.08);
+            --ink: #f4f4f5; --on-ink: #111113;
+            --ok: #3ccf6a; --danger: #ff5a4f; --warn: #f2a93b;
+            --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 30px rgba(0,0,0,.35); }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: var(--text); min-height: 100vh;
+         background: radial-gradient(1200px 600px at 50% -200px, var(--card), transparent 70%), var(--bg);
+         font: 15px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Roboto, sans-serif;
+         -webkit-font-smoothing: antialiased; }
+  main { max-width: 820px; margin: 0 auto; padding: 28px 16px 72px; }
+  code { font: 12.5px ui-monospace, "SF Mono", Menlo, monospace; background: var(--bg2); padding: 1px 6px; border-radius: 6px; }
+
+  /* header */
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 28px; }
+  header img { width: 52px; height: 52px; border-radius: 50%; box-shadow: var(--shadow); }
+  header h1 { font-size: 22px; letter-spacing: -.02em; margin: 0; }
+  header p { margin: 0; color: var(--muted); font-size: 13px; }
+  header .spacer { flex: 1; }
+  .live { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted);
+          background: var(--card); border: 1px solid var(--line); padding: 5px 11px; border-radius: 999px; }
+  .live i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 20%, transparent); }
+  .live.off i { background: var(--danger); box-shadow: none; }
+
+  /* tabs */
+  .tabs { display: flex; gap: 2px; background: var(--bg2); border-radius: 12px; padding: 3px; margin: 0 0 18px; width: fit-content; }
+  .tabs button { background: none; padding: 7px 16px; border-radius: 9px; color: var(--muted); font-weight: 500; }
+  .tabs button:hover { color: var(--text); }
+  .tabs button.on { background: var(--card); color: var(--text); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+
+  .sub { color: var(--muted); margin: 0 0 16px; font-size: 14px; max-width: 64ch; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 36px 0 10px; font-weight: 600; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; box-shadow: var(--shadow); }
+
+  /* form */
+  label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+  input[type=text], input[type=number], select { width: 100%; padding: 11px 13px; border-radius: 11px; font: inherit;
+         border: 1px solid var(--line); background: var(--raised); color: var(--text); transition: border-color .15s, box-shadow .15s; }
+  input[type=text]:focus, input[type=number]:focus, select:focus { outline: none; border-color: var(--ink);
+         box-shadow: 0 0 0 3px color-mix(in srgb, var(--ink) 12%, transparent); }
+  input[type=checkbox] { accent-color: var(--ink); width: 16px; height: 16px; margin: 2px 0 0; flex: none; }
+  .row { display: grid; grid-template-columns: 1fr 200px 120px; gap: 14px; margin-bottom: 16px; }
+  .drop { display: flex; flex-direction: column; align-items: center; gap: 10px; border: 1.5px dashed var(--line);
+          border-radius: 14px; padding: 28px 18px; text-align: center; color: var(--muted); cursor: pointer;
+          margin-bottom: 16px; background: var(--raised); transition: border-color .15s, background .15s, transform .15s; }
+  .drop:hover { border-color: var(--faint); }
+  .drop.over { border-color: var(--ink); color: var(--text); transform: scale(1.01); }
+  .drop .icon { width: 44px; height: 44px; border-radius: 50%; background: var(--ink); color: var(--on-ink);
+                display: grid; place-items: center; }
+  .drop b { color: var(--text); font-weight: 600; }
+  .drop ul { list-style: none; padding: 0; margin: 4px 0 0; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+  .drop li { background: var(--card); border: 1px solid var(--line); color: var(--text); font-size: 12.5px;
+             padding: 4px 10px; border-radius: 999px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .check { display: flex; gap: 10px; align-items: flex-start; font-weight: 500; font-size: 14px; margin-bottom: 20px; cursor: pointer; }
+  #referenceRow { margin-bottom: 16px; }
+  #referenceRow label small, #referenceRow .hint { color: var(--muted); font-weight: 400; font-size: 13px; }
+  #referenceRow .hint { display: block; margin-top: 4px; }
+  .check small { display: block; color: var(--muted); font-weight: 400; font-size: 13px; margin-top: 2px; }
+
+  /* buttons */
+  button { font: inherit; font-size: 14px; border: 0; border-radius: 10px; padding: 8px 14px; cursor: pointer;
+           background: var(--bg2); color: var(--text); transition: background .15s, opacity .15s, transform .05s; }
+  button:hover { background: color-mix(in srgb, var(--bg2) 80%, var(--ink)); }
+  button:active { transform: scale(.98); }
+  button.primary { background: var(--ink); color: var(--on-ink); padding: 10px 20px; font-weight: 600; }
+  button.primary:hover { background: color-mix(in srgb, var(--ink) 85%, var(--bg)); }
+  button.danger { color: var(--danger); background: none; }
+  button.danger:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+  button:disabled { opacity: .4; cursor: default; transform: none; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .error { color: var(--danger); font-size: 13px; margin-top: 10px; }
+  .error:empty { display: none; }
+  .empty { color: var(--muted); margin: 0; }
+
+  /* jobs */
+  #jobs { padding: 6px 22px; }
+  .job { display: grid; grid-template-columns: 36px 1fr auto; gap: 4px 14px; align-items: center; padding: 16px 0; border-top: 1px solid var(--line); }
+  .job:first-child { border-top: 0; }
+  .job .kind { grid-row: span 2; width: 36px; height: 36px; border-radius: 10px; background: var(--bg2);
+               display: grid; place-items: center; color: var(--muted); align-self: start; }
+  .job-name { font-weight: 600; overflow-wrap: anywhere; }
+  .status { justify-self: end; font-size: 11.5px; font-weight: 600; padding: 3px 10px; border-radius: 999px;
+            background: var(--bg2); color: var(--muted); white-space: nowrap; text-transform: capitalize; }
+  .status.done { color: var(--ok); background: color-mix(in srgb, var(--ok) 13%, transparent); }
+  .status.failed { color: var(--danger); background: color-mix(in srgb, var(--danger) 13%, transparent); }
+  .status.running { color: var(--on-ink); background: var(--ink); }
+  .status.stopped { color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, transparent); }
+  .msg { grid-column: 2; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+  .msg .err { color: var(--danger); }
+  .actions { grid-column: 3; grid-row: 2; display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+  .bar { grid-column: 2 / 4; height: 5px; border-radius: 3px; background: var(--bg2); overflow: hidden; margin-top: 8px; }
+  .bar div { height: 100%; background: var(--ink); border-radius: 3px; transition: width .5s ease; }
+
+  /* instrumentals */
+  .search { margin-bottom: 14px; padding-left: 38px !important;
+            background: var(--raised) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='7' cy='7' r='5'/%3E%3Cpath d='m11 11 3.5 3.5'/%3E%3C/svg%3E") no-repeat 13px center; }
+  .album { border-top: 1px solid var(--line); }
+  .album:first-child { border-top: 0; }
+  .album-head { display: flex; gap: 12px; align-items: center; padding: 10px 4px; border-radius: 12px; }
+  .album-head:hover { background: var(--raised); }
+  .album-head img, .album-head .noart { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: var(--bg2); flex: none;
+                                        box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+  .album-title { flex: 1; min-width: 0; cursor: pointer; }
+  .album-title b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .album-title small { color: var(--muted); font-size: 12.5px; }
+  .chev { color: var(--faint); cursor: pointer; padding: 6px 10px; border-radius: 8px; transition: transform .15s; }
+  .chev.open { transform: rotate(90deg); }
+  .tracks { padding: 2px 4px 12px 64px; }
+  .track { display: flex; gap: 10px; align-items: center; padding: 6px 8px; font-size: 14px; font-weight: 400; margin: 0; border-radius: 8px; cursor: pointer; }
+  .track:hover { background: var(--raised); }
+  .track .n { color: var(--faint); width: 22px; text-align: right; font-variant-numeric: tabular-nums; }
+  .track .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge { font-size: 11px; font-weight: 600; color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent);
+           padding: 2px 8px; border-radius: 999px; }
+  .badge.missing { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+  #more { margin-top: 10px; width: 100%; }
+  .actionbar { position: sticky; bottom: 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px;
+               background: color-mix(in srgb, var(--card) 85%, transparent); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+               border: 1px solid var(--line); border-radius: 16px; padding: 10px 10px 10px 18px; margin-top: 14px; box-shadow: var(--shadow); }
+  /* server status */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; padding: 16px; }
+  .stat { background: var(--raised); border-radius: 12px; padding: 10px 12px; min-width: 0; }
+  .stat small { display: block; color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+  .stat b { display: block; font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stat span { color: var(--muted); font-size: 12.5px; }
+  .stat.warn b { color: var(--warn); }
+  .meter { height: 4px; border-radius: 2px; background: var(--bg2); margin-top: 6px; overflow: hidden; }
+  .meter i { display: block; height: 100%; background: var(--ink); }
+
+  /* job details */
+  .more { grid-column: 2 / 4; display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  details { background: var(--raised); border-radius: 10px; }
+  details summary { cursor: pointer; padding: 7px 12px; font-size: 13px; font-weight: 600; color: var(--muted); list-style: none; }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::before { content: "›"; display: inline-block; width: 14px; transition: transform .15s; }
+  details[open] summary::before { transform: rotate(90deg); }
+  .tlist { list-style: none; margin: 0; padding: 0 12px 8px; max-height: 340px; overflow: auto; }
+  .tlist li { display: flex; gap: 10px; align-items: center; font-size: 13px; padding: 4px 0; border-top: 1px solid var(--line); }
+  .tlist li:first-child { border-top: 0; }
+  .tlist .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tlist .d { color: var(--faint); font-variant-numeric: tabular-nums; font-size: 12px; }
+  .chip { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--bg2); color: var(--muted); white-space: nowrap; }
+  .chip.done { color: var(--ok); background: color-mix(in srgb, var(--ok) 13%, transparent); }
+  .chip.running { color: var(--on-ink); background: var(--ink); }
+  .chip.failed { color: var(--danger); background: color-mix(in srgb, var(--danger) 13%, transparent); }
+  pre.log { margin: 0; padding: 4px 12px 10px; max-height: 320px; overflow: auto; font: 11.5px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
+            white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
+  @media (max-width: 560px) {
+    .row { grid-template-columns: 1fr; }
+    header .live { display: none; }
+    .job { grid-template-columns: 1fr auto; }
+    .job .kind { display: none; }
+    .msg, .bar, .more { grid-column: 1 / -1; }
+    .actions { grid-column: 1 / -1; grid-row: auto; justify-content: flex-start; margin-top: 6px; }
+    .tracks { padding-left: 8px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="/logo.png" alt="Sunder">
+    <div><h1>Sunder Server</h1><p>Voice models and instrumentals, made on your own hardware</p></div>
+    <span class="spacer"></span>
+    <span class="live" id="live"><i></i><span id="liveText">Connected</span></span>
+  </header>
+  <div class="tabs" role="tablist"><button id="tabVoice" class="on">Voice Training</button><button id="tabStems">Instrumentals</button></div>
+
+  <section id="voiceView">
+  <p class="sub">Train a voice model from songs or isolated vocals, then import the <code>.sundervoice</code> file in Sunder → Voice Changer → Import….</p>
+
+  <form class="card" id="form">
+    <div class="row">
+      <div><label for="name">Voice name</label><input type="text" id="name" required maxlength="80" placeholder="e.g. My Voice"></div>
+      <div><label for="engine">Model</label><select id="engine">
+        <option value="seedvc">Seed-VC (natural, slower)</option>
+        <option value="rvc">RVC (fast)</option></select></div>
+      <div><label for="epochs" id="epochsLabel">Steps</label><input type="number" id="epochs" min="0" max="10000" placeholder="Auto"></div>
+    </div>
+    <div class="drop" id="drop">
+      <span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 12h2M7 8v8M11 5v14M15 9v6M19 11v2M21 12h0"/></svg></span>
+      <span><b>Drop audio files here</b> or click to choose</span>
+      <ul id="filelist"></ul>
+      <input type="file" id="files" multiple accept="audio/*" hidden>
+    </div>
+    <div id="referenceRow"><label for="reference">Reference clip <small>(Seed-VC · strongly recommended)</small></label>
+      <input type="file" id="reference" accept="audio/*">
+      <small class="hint">10–25 s of the singer alone: clean, dry, no backing vocals. It decides how much the voice sounds like them.</small></div>
+    <label class="check"><input type="checkbox" id="isolated">
+      <span>Files are already isolated lead vocals
+        <small>Skips separation. Otherwise each song is split into vocals, backing vocals are removed, and reverb is stripped.</small></span>
+    </label>
+    <button class="primary" id="submit" type="submit">Start Training</button>
+    <div class="error" id="formError"></div>
+  </form>
+  </section>
+
+  <section id="stemsView" hidden>
+  <p class="sub">Pick songs or whole albums from Jellyfin. Each gets an instrumental and a vocals-only version, saved next to the original as <code>[Instrumental]</code> and <code>[Vocals]</code> files. Coral hides them and offers a vocal slider instead.</p>
+  <div class="card">
+    <input type="text" id="search" class="search" placeholder="Search albums or artists">
+    <div id="albums"><p class="empty">Loading…</p></div>
+    <button id="more" hidden>Show more</button>
+  </div>
+  <div class="actionbar"><span id="selection" class="empty">Nothing selected</span>
+    <button class="primary" id="generate" disabled>Generate Instrumentals</button></div>
+  <div class="error" id="stemsError"></div>
+  </section>
+
+  <h2>Server</h2>
+  <div class="card stats" id="status"><p class="empty">Loading…</p></div>
+
+  <h2>Jobs</h2>
+  <div class="card" id="jobs"><p class="empty">No jobs yet.</p></div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let chosen = [];
+
+function showFiles() {
+  $("filelist").innerHTML = chosen.map(f => `<li>${esc(f.name)}</li>`).join("");
+}
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+$("drop").onclick = () => $("files").click();
+$("files").onchange = e => { chosen = chosen.concat([...e.target.files]); e.target.value = ""; showFiles(); };
+$("drop").ondragover = e => { e.preventDefault(); $("drop").classList.add("over"); };
+$("drop").ondragleave = () => $("drop").classList.remove("over");
+$("drop").ondrop = e => { e.preventDefault(); $("drop").classList.remove("over"); chosen = chosen.concat([...e.dataTransfer.files]); showFiles(); };
+
+$("engine").onchange = () => {
+  const seed = $("engine").value === "seedvc";
+  $("epochsLabel").textContent = seed ? "Steps" : "Epochs";
+  $("referenceRow").hidden = !seed;
+};
+
+$("form").onsubmit = async e => {
+  e.preventDefault();
+  $("formError").textContent = "";
+  if (!chosen.length) { $("formError").textContent = "Add at least one audio file."; return; }
+  const body = new FormData();
+  body.append("name", $("name").value);
+  body.append("isolated", $("isolated").checked);
+  body.append("epochs", $("epochs").value || 0);
+  body.append("engine", $("engine").value);
+  if ($("engine").value === "seedvc" && $("reference").files[0]) body.append("reference", $("reference").files[0]);
+  chosen.forEach(f => body.append("files", f));
+  $("submit").disabled = true; $("submit").textContent = "Uploading…";
+  try {
+    const r = await fetch("/api/jobs", { method: "POST", body });
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    chosen = []; showFiles(); $("form").reset();
+    refresh();
+  } catch (err) { $("formError").textContent = err.message; }
+  $("submit").disabled = false; $("submit").textContent = "Start Training";
+};
+
+async function act(id, action) {
+  const r = action === "delete"
+    ? await fetch(`/api/jobs/${id}`, { method: "DELETE" })
+    : await fetch(`/api/jobs/${id}/${action}`, { method: "POST" });
+  if (!r.ok) alert((await r.json()).detail || r.statusText);
+  refresh();
+}
+
+const iconVoice = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
+const iconStems = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="8" cy="18" r="3"/><circle cx="18" cy="16" r="3"/><path d="M11 18V5l10-2v13"/></svg>';
+const stageNames = { separating: "Separating", preparing: "Preparing", training: "Training", exporting: "Exporting" };
+
+const openDetails = new Set();   // "tracks-<id>" / "log-<id>" kept open across refreshes
+const logs = {};                 // job id -> last fetched log text
+document.addEventListener("toggle", e => {
+  const key = e.target.dataset && e.target.dataset.key;
+  if (!key) return;
+  e.target.open ? openDetails.add(key) : openDetails.delete(key);
+  if (e.target.open && key.startsWith("log-")) loadLog(key.slice(4));
+}, true);
+
+async function loadLog(id) {
+  try { logs[id] = await (await fetch(`/api/jobs/${id}/log`)).text(); } catch { return; }
+  const pre = document.querySelector(`pre[data-log="${id}"]`);
+  if (!pre) return;
+  const atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 8;
+  pre.textContent = logs[id] || "No log yet.";
+  if (atBottom) pre.scrollTop = pre.scrollHeight;
+}
+
+function dur(sec) {
+  if (sec == null) return "";
+  sec = Math.round(sec);
+  return sec >= 3600 ? `${Math.floor(sec / 3600)} h ${Math.round(sec % 3600 / 60)} min` : sec >= 60 ? `${Math.floor(sec / 60)} min ${sec % 60} s` : `${sec} s`;
+}
+const trackStateNames = { done: "Done", running: "Separating", pending: "Waiting", failed: "Failed" };
+
+function tracksPanel(j) {
+  const states = j.trackStates || {};
+  const done = j.tracks.filter(t => (states[t.id] || {}).state === "done").length;
+  const timed = Object.values(states).filter(s => s.state === "done" && s.seconds);
+  const avg = timed.length ? timed.reduce((a, s) => a + s.seconds, 0) / timed.length : null;
+  const left = j.tracks.length - done;
+  const eta = j.status === "running" && avg && left ? ` · about ${dur(avg * left)} left` : "";
+  const rows = j.tracks.map((t, i) => {
+    const st = states[t.id] || { state: "pending" };
+    const running = st.state === "running";
+    const pctSong = running && j.message && /· (\d+)%$/.test(j.message) ? ` ${j.message.match(/· (\d+)%$/)[1]}%` : "";
+    const time = st.state === "done" && st.seconds ? dur(st.seconds) : running && st.started ? dur(Date.now() / 1000 - st.started) : "";
+    const title = st.error ? ` title="${esc(st.error)}"` : "";
+    return `<li${title}><span class="d">${i + 1}</span><span class="t">${esc(t.name)}</span><span class="d">${time}</span>
+      <span class="chip ${st.state}">${trackStateNames[st.state] || esc(st.state)}${pctSong}</span></li>`;
+  }).join("");
+  const key = `tracks-${j.id}`;
+  return `<details data-key="${key}" ${openDetails.has(key) ? "open" : ""}>
+    <summary>Tracks · ${done} of ${j.tracks.length} done${avg ? ` · ${dur(avg)} per song` : ""}${eta}</summary>
+    <ul class="tlist">${rows}</ul></details>`;
+}
+
+function logPanel(j) {
+  const key = `log-${j.id}`;
+  return `<details data-key="${key}" ${openDetails.has(key) ? "open" : ""}><summary>Log</summary>
+    <pre class="log" data-log="${j.id}">${esc(logs[j.id] || "Loading…")}</pre></details>`;
+}
+
+function render(jobs) {
+  if (!jobs.length) { $("jobs").innerHTML = '<p class="empty">No jobs yet.</p>'; return; }
+  const scrolls = {};
+  document.querySelectorAll("pre[data-log], .tlist").forEach(el => {
+    const key = el.dataset.log ? "log-" + el.dataset.log : el.parentElement.dataset.key; scrolls[key] = el.scrollTop;
+  });
+  $("jobs").innerHTML = jobs.map(j => {
+    const pct = Math.round((j.progress || 0) * 100);
+    const label = j.status === "running" ? (stageNames[j.stage] || "Running") + ` · ${pct}%` : j.status;
+    const fallback = j.kind === "stems" ? `${j.tracks.length} songs`
+      : (j.engine === "seedvc" ? "Seed-VC · " : "RVC · ") + (j.isolated ? "Isolated vocals" : "Songs");
+    const msg = j.error ? `<span class="err">${esc(j.error)}</span>` : esc(j.message || fallback);
+    const icon = j.kind === "stems" ? iconStems : iconVoice;
+    const buttons = [];
+    if (j.status === "done" && j.kind !== "stems") buttons.push(`<button class="primary" onclick="location.href='/api/jobs/${j.id}/download'">Download</button>`);
+    if (j.status === "running") {
+      buttons.push(`<button onclick="act('${j.id}','stop')" title="Finishes the current ${j.kind === "stems" ? "song" : "step"}, then stops">${j.kind === "stems" ? "Stop after song" : "Stop"}</button>`);
+      buttons.push(`<button class="danger" onclick="if(confirm('Force stop now? ${j.kind === "stems" ? "The song being separated is discarded and redone when you resume." : "Stops at the next training step."}'))act('${j.id}','stop?force=true')">Force stop</button>`);
+    }
+    if (j.status === "queued") buttons.push(`<button onclick="act('${j.id}','stop')">Remove from queue</button>`);
+    if (j.status === "stopped" || j.status === "failed") buttons.push(`<button onclick="act('${j.id}','resume')">Resume</button>`);
+    if (j.status !== "running") buttons.push(`<button class="danger" onclick="if(confirm('Delete this job?'))act('${j.id}','delete')">Delete</button>`);
+    const started = j.status === "running" && j.started ? ` · running ${dur(Date.now() / 1000 - j.started)}` : "";
+    return `<div class="job">
+      <span class="kind">${icon}</span>
+      <span class="job-name">${esc(j.name)}</span><span class="status ${j.status}">${esc(label)}</span>
+      <div class="msg">${msg}${esc(started)}</div>
+      <div class="actions">${buttons.join("")}</div>
+      ${j.status === "running" ? `<div class="bar"><div style="width:${pct}%"></div></div>` : ""}
+      <div class="more">${j.kind === "stems" ? tracksPanel(j) : ""}${logPanel(j)}</div>
+    </div>`;
+  }).join("");
+  document.querySelectorAll("pre[data-log], .tlist").forEach(el => {
+    const key = el.dataset.log ? "log-" + el.dataset.log : el.parentElement.dataset.key;
+    if (scrolls[key] != null) el.scrollTop = scrolls[key];
+  });
+  for (const key of openDetails) if (key.startsWith("log-")) loadLog(key.slice(4));
+}
+
+function bytes(n) { return n >= 1e12 ? (n / 1e12).toFixed(1) + " TB" : (n / 1e9).toFixed(n >= 1e10 ? 0 : 1) + " GB"; }
+function renderStatus(st, jobs) {
+  const job = st.job && jobs.find(j => j.id === st.job);
+  const stale = st.sinceProgress != null && st.sinceProgress > 180;
+  const tiles = [];
+  tiles.push(`<div class="stat ${stale ? "warn" : ""}"><small>Worker</small><b>${job ? esc(job.name) : "Idle"}</b>
+    <span>${job ? (stale ? `No progress for ${dur(st.sinceProgress)}` : `Progress ${dur(st.sinceProgress)} ago`) : `${st.queued} queued`}</span></div>`);
+  tiles.push(`<div class="stat"><small>Queue</small><b>${st.queued} waiting</b><span>Up ${dur(st.uptime)}</span></div>`);
+  tiles.push(`<div class="stat"><small>Compute</small><b>${esc(st.device)}</b><span>Load ${st.load.join(" · ")} on ${st.cpus} cores</span>
+    <div class="meter"><i style="width:${Math.min(100, st.load[0] / st.cpus * 100)}%"></i></div></div>`);
+  if (st.memory) { const used = st.memory.total - st.memory.available;
+    tiles.push(`<div class="stat"><small>Memory</small><b>${bytes(used)} of ${bytes(st.memory.total)}</b><span>${bytes(st.memory.available)} free</span>
+      <div class="meter"><i style="width:${used / st.memory.total * 100}%"></i></div></div>`); }
+  for (const [name, d] of Object.entries(st.disks || {})) {
+    tiles.push(`<div class="stat ${d.free / d.total < .05 ? "warn" : ""}"><small>Disk · ${esc(name)}</small><b>${bytes(d.free)} free</b><span>of ${bytes(d.total)}</span>
+      <div class="meter"><i style="width:${(1 - d.free / d.total) * 100}%"></i></div></div>`);
+  }
+  $("status").innerHTML = tiles.join("");
+}
+
+async function refresh() {
+  try {
+    const jobs = await (await fetch("/api/jobs")).json();
+    render(jobs);
+    try { renderStatus(await (await fetch("/api/status")).json(), jobs); } catch {}
+    $("live").classList.remove("off"); $("liveText").textContent = "Connected";
+  } catch {
+    $("live").classList.add("off"); $("liveText").textContent = "Offline";
+  }
+}
+refresh();
+setInterval(refresh, 3000);
+
+// MARK: instrumentals
+
+$("tabVoice").onclick = () => showTab(false);
+$("tabStems").onclick = () => showTab(true);
+function showTab(stems) {
+  $("voiceView").hidden = stems; $("stemsView").hidden = !stems;
+  $("tabVoice").classList.toggle("on", !stems); $("tabStems").classList.toggle("on", stems);
+  if (stems && !loadedAlbums) loadAlbums(true);
+}
+
+let loadedAlbums = false, albumList = [], albumTotal = 0, searchTimer;
+const trackCache = {};                 // albumId -> tracks
+const pickedAlbums = new Set();        // whole albums
+const pickedTracks = new Map();        // trackId -> albumId
+const openAlbums = new Set();
+
+$("search").oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => loadAlbums(true), 300); };
+$("more").onclick = () => loadAlbums(false);
+
+async function api(path, options) {
+  const r = await fetch(path, options);
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.detail || r.statusText);
+  return body;
+}
+
+async function loadAlbums(reset) {
+  loadedAlbums = true;
+  try {
+    const status = await api("/api/jellyfin/status");
+    if (!status.configured) {
+      $("albums").innerHTML = '<p class="empty">Jellyfin isn\'t connected. Set <code>JELLYFIN_URL</code> and <code>JELLYFIN_API_KEY</code> for the server (see README).</p>';
+      return;
+    }
+    const start = reset ? 0 : albumList.length;
+    const page = await api(`/api/jellyfin/albums?search=${encodeURIComponent($("search").value)}&start=${start}`);
+    albumList = reset ? page.albums : albumList.concat(page.albums);
+    albumTotal = page.total;
+    renderAlbums();
+  } catch (err) { $("albums").innerHTML = `<p class="error">${esc(err.message)}</p>`; }
+}
+
+function renderAlbums() {
+  $("more").hidden = albumList.length >= albumTotal;
+  if (!albumList.length) { $("albums").innerHTML = '<p class="empty">No albums found.</p>'; return; }
+  $("albums").innerHTML = albumList.map(a => {
+    const tracks = trackCache[a.id];
+    const open = openAlbums.has(a.id);
+    const meta = [a.artist, a.year, a.tracks ? `${a.tracks} songs` : null].filter(Boolean).join(" · ");
+    const art = a.image ? `<img src="/api/jellyfin/albums/${a.id}/image" loading="lazy" alt="">` : '<div class="noart"></div>';
+    const trackRows = open ? (tracks ? tracks.map(t => {
+      const state = t.hasStems ? '<span class="badge">Instrumental ✓</span>' : (t.found ? "" : '<span class="badge missing">File not found</span>');
+      const disabled = t.hasStems || !t.found || pickedAlbums.has(a.id);
+      const checked = pickedAlbums.has(a.id) ? (!t.hasStems && t.found) : pickedTracks.has(t.id);
+      return `<label class="track"><input type="checkbox" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""}
+        onchange="pickTrack('${t.id}','${a.id}',this.checked)"><span class="n">${t.index ?? ""}</span>
+        <span class="name">${esc(t.name)}</span>${state}</label>`;
+    }).join("") : '<p class="empty">Loading…</p>') : "";
+    return `<div class="album">
+      <div class="album-head">
+        <input type="checkbox" ${pickedAlbums.has(a.id) ? "checked" : ""} onchange="pickAlbum('${a.id}',this.checked)" title="Whole album">
+        ${art}
+        <div class="album-title" onclick="toggleAlbum('${a.id}')"><b>${esc(a.name)}</b><small>${esc(meta)}</small></div>
+        <span class="chev ${open ? "open" : ""}" onclick="toggleAlbum('${a.id}')">›</span>
+      </div>
+      ${open ? `<div class="tracks">${trackRows}</div>` : ""}
+    </div>`;
+  }).join("");
+  updateSelection();
+}
+
+async function toggleAlbum(id) {
+  if (openAlbums.has(id)) { openAlbums.delete(id); renderAlbums(); return; }
+  openAlbums.add(id); renderAlbums();
+  if (!trackCache[id]) {
+    try { trackCache[id] = await api(`/api/jellyfin/albums/${id}/tracks`); }
+    catch (err) { trackCache[id] = []; $("stemsError").textContent = err.message; }
+    renderAlbums();
+  }
+}
+
+function pickAlbum(id, on) {
+  on ? pickedAlbums.add(id) : pickedAlbums.delete(id);
+  for (const [track, album] of pickedTracks) if (album === id) pickedTracks.delete(track);
+  renderAlbums();
+}
+
+function pickTrack(id, albumId, on) {
+  on ? pickedTracks.set(id, albumId) : pickedTracks.delete(id);
+  updateSelection();
+}
+
+function updateSelection() {
+  const parts = [];
+  if (pickedAlbums.size) parts.push(`${pickedAlbums.size} ${pickedAlbums.size === 1 ? "album" : "albums"}`);
+  if (pickedTracks.size) parts.push(`${pickedTracks.size} ${pickedTracks.size === 1 ? "song" : "songs"}`);
+  $("selection").textContent = parts.length ? parts.join(" + ") + " selected" : "Nothing selected";
+  $("generate").disabled = !parts.length;
+}
+
+function selectionName() {
+  const names = [...pickedAlbums].map(id => albumList.find(a => a.id === id)?.name).filter(Boolean);
+  if (pickedTracks.size) names.push(`${pickedTracks.size} ${pickedTracks.size === 1 ? "song" : "songs"}`);
+  return "Instrumentals: " + (names.slice(0, 3).join(", ") + (names.length > 3 ? "…" : ""));
+}
+
+$("generate").onclick = async () => {
+  $("stemsError").textContent = "";
+  $("generate").disabled = true;
+  try {
+    await api("/api/stems", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+      name: selectionName(), albumIds: [...pickedAlbums],
+      tracks: [...pickedTracks].map(([id, albumId]) => ({ id, albumId })) }) });
+    pickedAlbums.clear(); pickedTracks.clear();
+    for (const id in trackCache) delete trackCache[id];
+    openAlbums.clear(); renderAlbums(); refresh();
+    document.getElementById("jobs").scrollIntoView({ behavior: "smooth" });
+  } catch (err) { $("stemsError").textContent = err.message; updateSelection(); }
+};
+</script>
+</body>
+</html>

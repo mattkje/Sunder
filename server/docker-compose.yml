@@ -1,0 +1,30 @@
+services:
+  sundervoice:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+      # For an NVIDIA GPU, uncomment these and the `deploy:` block below
+      # (needs nvidia-container-toolkit on the host).
+      # args:
+      #   TORCH_INDEX: https://download.pytorch.org/whl/cu124
+      #   SEPARATOR_EXTRA: gpu
+    image: sundervoice
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    volumes:
+      - ./data:/data
+      # Instrumentals for Jellyfin: mount the music library read-write (the files are written next to
+      # the originals) and point the service at Jellyfin. See README → "Instrumentals".
+      # - /path/to/music:/music
+    # environment:
+    #   JELLYFIN_URL: http://jellyfin:8096
+    #   JELLYFIN_API_KEY: <Dashboard → API Keys>
+    #   JELLYFIN_PATH_MAP: /media/music=/music   # Jellyfin's path for the library = path inside this container
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]

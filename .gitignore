@@ -15,3 +15,6 @@ DerivedData/
 # tools/convert/README.md and Sunder/Sunder/ModelDownloader.swift.
 *.mlpackage/
 *.mlmodelc/
+
+# Python bytecode
+__pycache__/

@@ -22,6 +22,7 @@ struct SeparationScreen: View {
     @State private var pendingURLText = ""
     @State private var urlImportError: String?
     @AppStorage(AIModel.storageKey) private var selectedModelRaw = AIModel.melBandRoformerDeux.rawValue
+    @AppStorage(OutputQuality.storageKey) private var qualityRaw = OutputQuality.web.rawValue
 
     /// Falls back within this screen's own model set (not a single global
     /// default) since Vocal Remover and Splitter offer disjoint models but
@@ -61,9 +62,11 @@ struct SeparationScreen: View {
                 case .failed(let url, let message):
                     Label("\(url.lastPathComponent): \(message)", systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.red)
+                case .batchSaved(let folder, let savedCount, let failures):
+                    batchSavedCard(folder: folder, savedCount: savedCount, failures: failures)
                 }
 
-                if !inputURLs.isEmpty, isIdleOrFailed, downloader.state(for: selectedModel) == .ready {
+                if !inputURLs.isEmpty, isIdleOrFailed, downloader.readiness(for: selectedModel) == .ready {
                     Button(separateButtonTitle) {
                         separateAll()
                     }
@@ -114,6 +117,28 @@ struct SeparationScreen: View {
         inputURLs.count == 1
             ? "\(section.verb) \"\(inputURLs[0].lastPathComponent)\""
             : "\(section.verb) \(inputURLs.count) Files"
+    }
+
+    private func batchSavedCard(folder: URL, savedCount: Int, failures: [String]) -> some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 8) {
+                Label(
+                    "Saved \(savedCount) \(savedCount == 1 ? "file" : "files") to \(folder.lastPathComponent)",
+                    systemImage: "checkmark.circle.fill"
+                )
+                .foregroundStyle(.secondary)
+                #if os(macOS)
+                Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
+                    .font(.caption)
+                #endif
+            }
+            if !failures.isEmpty {
+                Label("Failed: \(failures.joined(separator: ", "))", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
+            }
+        }
     }
 
     @ViewBuilder
@@ -187,7 +212,7 @@ struct SeparationScreen: View {
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
 
-            if downloader.state(for: selectedModel) != .ready {
+            if downloader.readiness(for: selectedModel) != .ready {
                 Divider()
                 modelStatusRow
                     .padding(.horizontal, 14)
@@ -199,22 +224,22 @@ struct SeparationScreen: View {
                 .fill(Color.secondary.opacity(0.08))
         )
         .fixedSize()
-        .animation(.easeInOut(duration: 0.2), value: downloader.state(for: selectedModel))
+        .animation(.easeInOut(duration: 0.2), value: downloader.readiness(for: selectedModel))
     }
 
     @ViewBuilder
     private var modelStatusRow: some View {
-        switch downloader.state(for: selectedModel) {
+        switch downloader.readiness(for: selectedModel) {
         case .ready:
             EmptyView()
         case .notDownloaded:
             Button {
-                downloader.download(selectedModel)
+                downloader.downloadRequirements(of: selectedModel)
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.down.circle.fill")
                     Text("Download Model")
-                    Text("· ~\(selectedModel.approximateSizeMB) MB")
+                    Text("· ~\(downloader.pendingDownloadMB(for: selectedModel)) MB")
                         .foregroundStyle(.secondary)
                 }
                 .font(.caption.weight(.medium))
@@ -227,7 +252,7 @@ struct SeparationScreen: View {
                 Text("\(Int(progress * 100))%")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Button("Cancel") { downloader.cancelDownload(selectedModel) }
+                Button("Cancel") { downloader.cancelRequirements(of: selectedModel) }
                     .buttonStyle(.plain)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -238,7 +263,7 @@ struct SeparationScreen: View {
                     .font(.caption)
                     .foregroundStyle(.red)
                     .lineLimit(1)
-                Button("Retry") { downloader.download(selectedModel) }
+                Button("Retry") { downloader.downloadRequirements(of: selectedModel) }
                     .buttonStyle(.plain)
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.primary)
@@ -248,7 +273,7 @@ struct SeparationScreen: View {
 
     private var isIdleOrFailed: Bool {
         switch queue.status {
-        case .idle, .failed, .cancelled: return true
+        case .idle, .failed, .cancelled, .batchSaved: return true
         default: return false
         }
     }
@@ -437,13 +462,38 @@ struct SeparationScreen: View {
         }
     }
 
-    /// Output location is no longer chosen here -- MixerView asks for it (if
-    /// at all) once the user actually saves something, after mixing.
+    /// A single file opens the Mixer when done, which asks for a save
+    /// location (if at all) once the user actually saves something. A
+    /// multi-file batch (macOS only -- see `allowsMultipleFiles`) instead asks
+    /// for one output folder up front and saves every file's stems there
+    /// automatically, so the whole queue runs unattended.
     private func separateAll() {
         let jobs = inputURLs.map { SeparationQueue.Job(inputURL: $0, model: selectedModel) }
+        var autoSave: SeparationQueue.AutoSave?
+        #if os(macOS)
+        if jobs.count > 1 {
+            guard let folder = chooseOutputFolder() else { return }
+            autoSave = .init(folder: folder, quality: OutputQuality(rawValue: qualityRaw) ?? .web)
+        }
+        #endif
         inputURLs = []
-        queue.enqueue(jobs)
+        queue.enqueue(jobs, autoSave: autoSave)
     }
+
+    #if os(macOS)
+    private func chooseOutputFolder() -> URL? {
+        let panel = NSOpenPanel()
+        panel.title = "Choose where to save the separated tracks"
+        panel.message = "Each file's stems are saved into its own subfolder here as the queue runs."
+        panel.prompt = "Start"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK else { return nil }
+        return panel.url
+    }
+    #endif
 }
 
 /// Secondary action pill ("Choose File" / "Paste a Link") with a hover
@@ -476,8 +526,9 @@ private struct PillButton: View {
 
 /// Rounded-capsule progress bar used in place of the default linear
 /// `ProgressView` for separation/download progress -- matches the app's
-/// capsule/pill visual language (see AboutView's version badge).
-private struct ProgressCapsule: View {
+/// capsule/pill visual language (see AboutView's version badge). Also used
+/// by VoiceScreen.
+struct ProgressCapsule: View {
     let progress: Double
 
     var body: some View {

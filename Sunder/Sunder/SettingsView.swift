@@ -10,6 +10,10 @@ struct SettingsView: View {
     #if os(iOS)
     @State private var showAbout = false
     #endif
+    #if os(macOS)
+    @State private var voiceAssets = VoiceAssetDownloader.shared
+    @State private var seedVCAssets = VoiceAssetDownloader.seedVC
+    #endif
 
     private var quality: OutputQuality {
         OutputQuality(rawValue: qualityRaw) ?? .web
@@ -59,6 +63,12 @@ struct SettingsView: View {
                     ForEach(AIModel.allCases) { model in
                         modelRow(model)
                     }
+                    #if os(macOS)
+                    voiceModelsRow(voiceAssets, title: "Voice Changer (RVC v2)",
+                                   detail: "Content and pitch analyzers plus the pretrained voice model")
+                    voiceModelsRow(seedVCAssets, title: "Voice Changer (Seed-VC)",
+                                   detail: "Content encoder and vocoder for Seed-VC voices")
+                    #endif
                 } header: {
                     Label("Models", systemImage: "shippingbox")
                 } footer: {
@@ -147,6 +157,48 @@ struct SettingsView: View {
                 .font(.caption)
         }
     }
+
+    #if os(macOS)
+    /// One of the Voice Changer's model bundles (VoiceAssetDownloader) -- one
+    /// row each, since a bundle's files are only ever used together. Trained
+    /// voices themselves live in the Voice Changer screen and aren't affected
+    /// by deleting these.
+    private func voiceModelsRow(_ assets: VoiceAssetDownloader, title: String, detail: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "waveform.and.person.filled")
+                .foregroundStyle(.background)
+                .frame(width: 28, height: 28)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.primary))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.body)
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            switch assets.state {
+            case .ready:
+                HStack(spacing: 8) {
+                    statusBadge("Ready" + (assets.installedSizeMB().map { " · \($0) MB" } ?? ""), color: .green)
+                    Button("Delete", role: .destructive) { assets.delete() }
+                        .font(.caption)
+                        .disabled(VoiceWorkspace.shared.job != .idle)
+                }
+            case .notDownloaded:
+                Button("Download (~\(assets.approximateSizeMB) MB)") { assets.download() }
+                    .font(.caption)
+            case .downloading(let progress):
+                HStack(spacing: 8) {
+                    ProgressView(value: progress).frame(width: 100)
+                    Button("Cancel") { assets.cancelDownload() }
+                        .font(.caption)
+                }
+            case .failed:
+                Button("Retry") { assets.download() }
+                    .font(.caption)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+    #endif
 
     @ViewBuilder
     private var updateStatusLabel: some View {
